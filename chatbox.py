@@ -1,20 +1,31 @@
-from langchain_community.document_loaders import TextLoader
-
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-from langchain_ollama import OllamaEmbeddings
-from langchain_community.vectorstores import FAISS
-
-from langchain_ollama import ChatOllama
-import os
-import pandas as pd
-
-from langchain_core.documents import Document
 from langchain_community.document_loaders import (
     TextLoader,
     PyPDFLoader,
     Docx2txtLoader
 )
+
+from langchain_text_splitters import (
+    RecursiveCharacterTextSplitter
+)
+
+from langchain_ollama import (
+    OllamaEmbeddings,
+    ChatOllama
+)
+
+from langchain_community.vectorstores import FAISS
+
+from langchain_core.documents import Document
+
+from rapidfuzz import process
+
+import pandas as pd
+import os
+
+
+# =========================
+# LOAD DOCUMENTS
+# =========================
 
 documents = []
 
@@ -79,26 +90,52 @@ for file in os.listdir(folder):
             )
 
 
-# Chia text
+# =========================
+# SPLIT TEXT
+# =========================
+
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=500,
     chunk_overlap=50
 )
 
-docs = text_splitter.split_documents(documents)
+docs = text_splitter.split_documents(
+    documents
+)
 
-# Embedding
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
 
-# Vector DB
-db = FAISS.from_documents(docs, embeddings)
+# =========================
+# EMBEDDING
+# =========================
 
-# Chat model
-llm = ChatOllama(model="tinyllama")
+embeddings = OllamaEmbeddings(
+    model="nomic-embed-text"
+)
 
-from ollama import chat
 
-# QA cố định
+# =========================
+# VECTOR DB
+# =========================
+
+db = FAISS.from_documents(
+    docs,
+    embeddings
+)
+
+
+# =========================
+# LLM
+# =========================
+
+llm = ChatOllama(
+    model="tinyllama"
+)
+
+
+# =========================
+# QA DATA
+# =========================
+
 qa_data = {}
 
 with open("qa.txt", encoding="utf-8") as f:
@@ -107,11 +144,9 @@ with open("qa.txt", encoding="utf-8") as f:
 
         line = line.strip()
 
-        # bỏ dòng trống
         if not line:
             continue
 
-        # kiểm tra có |
         if "|" not in line:
             continue
 
@@ -120,57 +155,85 @@ with open("qa.txt", encoding="utf-8") as f:
         qa_data[question.lower()] = answer
 
 
-while True:
+# =========================
+# MAIN FUNCTION
+# =========================
 
-    question = input("You: ").lower()
+def ask_ai(question):
 
-    # ưu tiên QA cố định
-    if question in qa_data:
+    question = question.lower()
 
-        print("AI:", qa_data[question])
 
-    # không có thì dùng RAG
-    else:
+    # =====================
+    # FUZZY MATCH
+    # =====================
 
-        # tìm dữ liệu liên quan
-        retrieved_docs = db.similarity_search(
+    best_match = process.extractOne(
+        question,
+        qa_data.keys()
+    )
+
+    if best_match and best_match[1] > 80:
+
+        return qa_data[best_match[0]]
+
+
+    # =====================
+    # RAG SEARCH
+    # =====================
+
+    retrieved_docs = db.similarity_search_with_score(
         question,
         k=2
-        )
+    )
+
+    if not retrieved_docs:
+
+        return "Tôi không biết"
 
 
-
-        for doc in retrieved_docs:
-
+    best_doc, best_score = retrieved_docs[0]
 
 
-        # ghép context
-            context = "\n".join(
-                [doc.page_content for doc in retrieved_docs]
-            )
+    # score cao = không liên quan
+    if best_score > 1:
 
-        # nếu không có dữ liệu
-        if not context.strip():
-
-            print("AI: Tôi không biết")
-
-            continue
-
-        # prompt
-        prompt = f"""
-        Chỉ trả lời dựa trên dữ liệu dưới đây.
+        return "Tôi không biết"
 
 
-        Dữ liệu:
-        {context}
+    # =====================
+    # CONTEXT
+    # =====================
 
-        Câu hỏi:
-        {question}
+    context = "\n".join(
+        [doc.page_content for doc, score in retrieved_docs]
+    )
 
-        Trả lời ngắn gọn, đúng trọng tâm.
-        """
 
-        # gọi model
-        response = llm.invoke(prompt)
+    # =====================
+    # PROMPT
+    # =====================
 
-        print("AI:", response.content)
+    prompt = f"""
+    Chỉ trả lời dựa trên dữ liệu dưới đây.
+
+    Nếu không có thông tin thì nói:
+    "Tôi không biết"
+
+    Không được tự bịa.
+
+    Dữ liệu:
+    {context}
+
+    Câu hỏi:
+    {question}
+    """
+
+
+    # =====================
+    # AI RESPONSE
+    # =====================
+
+    response = llm.invoke(prompt)
+
+    return response.content

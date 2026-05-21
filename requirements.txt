@@ -9,3 +9,6 @@ pandas==2.2.2
 pypdf
 python-docx
 docx2txt
+RapidFuzz
+flask-cors
+ollama run qwen3:1.7b
