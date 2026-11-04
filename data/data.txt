@@ -14,7 +14,6 @@ Mục tiêu dài hạn:
 - Săn học bổng Thạc sĩ tại Đức
 - Trường mục tiêu:
   + TUHH
-  + HAW Hamburg
 
 Mục tiêu IELTS:
 - IELTS Academic 6.5 - 7.0
@@ -48,7 +47,6 @@ Các môn nổi bật:
 
 Định hướng nghề nghiệp:
 - AI Engineer
-- Software Engineer
 - Machine Learning
 - Computer Science Research
 

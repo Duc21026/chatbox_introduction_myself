@@ -5,10 +5,11 @@ langchain-text-splitters
 
 faiss-cpu
 
-pandas==2.2.2 
+pandas
 pypdf
 python-docx
 docx2txt
 RapidFuzz
 flask-cors
-ollama run qwen3:1.7b
+
+pytest

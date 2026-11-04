@@ -1,0 +1,109 @@
+{
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "GPA hiện tại của bạn là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "8.30",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q02",
+      "question": "Điểm môn Đại số tuyến tính của bạn là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q03",
+      "question": "Bạn đang học trường nào?",
+      "category": "direct",
+      "expected_answer": "Đại học Khoa học Tự nhiên - ĐHQG TP.HCM",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q04",
+      "question": "Mục tiêu dài hạn của bạn là gì?",
+      "category": "direct",
+      "expected_answer": "Săn học bổng Thạc sĩ tại Đức",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q05",
+      "question": "Điểm môn Cấu trúc dữ liệu và giải thuật là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "5.4",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q06",
+      "question": "Điểm trung bình tích lũy của bạn đạt bao nhiêu?",
+      "category": "paraphrase",
+      "expected_answer": "8.30",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q07",
+      "question": "Bạn đang theo học ngôi trường nào vậy?",
+      "category": "paraphrase",
+      "expected_answer": "Đại học Khoa học Tự nhiên - ĐHQG TP.HCM",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q08",
+      "question": "Bạn đã tích lũy được bao nhiêu tín chỉ rồi?",
+      "category": "paraphrase",
+      "expected_answer": "62",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q09",
+      "question": "gpa cua ban la bao nhieu?",
+      "category": "no_diacritics",
+      "expected_answer": "8.30",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q10",
+      "question": "diem mon dai so tuyen tinh cua ban?",
+      "category": "no_diacritics",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q11",
+      "question": "Em ơi, điểm Vi tích phân 2 của em bao nhiêu?",
+      "category": "pronoun_variant",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q12",
+      "question": "Anh muốn biết môn nào bạn học tốt nhất?",
+      "category": "pronoun_variant",
+      "expected_answer": "Đại số tuyến tính và Vi tích phân 2",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q13",
+      "question": "Giá vàng hôm nay bao nhiêu?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q14",
+      "question": "Thời tiết Hà Nội ngày mai thế nào?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q15",
+      "question": "Bạn có biết đội tuyển bóng đá Việt Nam vô địch năm nào không?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    }
+  ]
+}
