@@ -1,0 +1,50 @@
+hello|tôi có thể giúp gì cho bạn
+hi| tôi có thể giúp gì cho bạn
+
+gpa bao nhiêu|GPA hiện tại là 8.30
+điểm trung bình hiện tại|8.3
+tổng tín chỉ bao nhiêu|Đã tích lũy 62 tín chỉ
+học bao nhiêu môn|Đã hoàn thành 17 môn
+
+môn điểm cao nhất|Đại số tuyến tính và Vi tích phân 2 đạt 10.0
+môn điểm thấp nhất|Cấu trúc dữ liệu và giải thuật đạt 5.40
+
+Văn Phú Đức|là sinh viên trường đại học Khoa Học Tự Nhiên-DHQGHCM 
+
+điểm đại số tuyến tính|10.0
+điểm vtp2|10.0
+điểm vi tích phân 2|10
+
+điểm toán rời rạc|9.4
+điểm vi tích phân 1|9.4
+điểm vtp1|9.4
+
+điểm kỹ năng mềm|9.3
+điểm kĩ năng mềm|9.3
+
+điểm vật lý đại cương 1|9.1
+điểm vật lí đại cương 1|9.1
+
+điểm tư duy tính toán|9.1
+điểm pháp luật đại cương|8.6
+điểm cơ sở lập trình|8.5
+điểm hệ thống máy tính|7.8
+điểm nhập môn công nghệ thông tin|7.5
+điểm toán học tổ hợp|7.4
+điểm mạng máy tính|7.3
+điểm giáo dục quốc phòng|7.1
+điểm lập trình hướng đối tượng|7.5
+điểm kinh tế đại cương|5.9
+điểm cấu trúc dữ liệu và giải thuật|5.4
+
+môn mạnh nhất|Các môn toán và tư duy logic
+môn cần cải thiện|Cấu trúc dữ liệu và giải thuật
+thế mạnh là gì|Rất mạnh về toán, logic và tư duy tính toán
+điểm yếu là gì|Cần cải thiện cấu trúc dữ liệu và giải thuật
+
+đại số tuyến tính xét chuyên ngành không|Có
+vi tích phân 2 xét chuyên ngành không|Có
+kỹ năng mềm xét chuyên ngành không|Không
+pháp luật xét chuyên ngành không|Không
+kinh tế xét chuyên ngành không|Không
+giáo dục quốc phòng xét chuyên ngành không|Không
