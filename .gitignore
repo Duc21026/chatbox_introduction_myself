@@ -1,38 +1,48 @@
-# Python
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python / backend
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-
-# Virtual environments
-venv/
 .venv/
+venv/
 env/
 .vent/
 vent/
-
-
-# Local configuration and secrets
-.env
-.env.*
-!.env.example
-
-# Testing and type-checking caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 coverage.xml
 htmlcov/
-
-# Build artifacts
-build/
-dist/
 *.egg-info/
+.eggs/
 pip-wheel-metadata/
 
-# Logs
+# Environment and secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Local data, logs, archives, and partial writes
+data/
+backend/data/
 *.log
+*.tmp
+*.part
+qa copy.txt
 
 # Spec Kit / tooling state
 .specify/
@@ -44,7 +54,3 @@ pip-wheel-metadata/
 .DS_Store
 Thumbs.db
 *.swp
-*.tmp
-*.part
-
-data/

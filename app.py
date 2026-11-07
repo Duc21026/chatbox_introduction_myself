@@ -1,36 +1,13 @@
-from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
+"""Compatibility entry point for the retained backend.
 
-from chatbox import ask_ai, warm_up
+Run ``python app.py`` from the repository root while the Python service lives
+under ``backend/``. New code should import ``backend.app`` directly.
+"""
 
-app = Flask(__name__)
-
-CORS(app)
-
-
-@app.route("/")
-def index():
-    return send_from_directory(".", "index.html")
-
-
-@app.route("/chat", methods=["POST"])
-def chatbot():
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        return jsonify({"error": "Dữ liệu gửi lên phải là JSON"}), 400
-
-    question = data.get("message")
-    if not isinstance(question, str) or not question.strip():
-        return jsonify({"error": "Thiếu trường 'message'"}), 400
-
-    try:
-        answer = ask_ai(question)
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
-
-    return jsonify({"response": answer})
-
+from backend.app import app
 
 if __name__ == "__main__":
+    from backend.chatbox import warm_up
+
     warm_up()
     app.run(debug=True)
