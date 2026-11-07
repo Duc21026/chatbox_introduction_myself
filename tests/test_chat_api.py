@@ -1,4 +1,5 @@
 import app as app_module
+import chatbox
 
 
 def test_chat_returns_single_response(monkeypatch):
@@ -45,3 +46,26 @@ def test_invalid_json_returns_client_error(monkeypatch):
 
     assert response.status_code == 400
     assert "error" in response.get_json()
+
+
+def test_diagnostics_are_not_exposed(monkeypatch):
+    monkeypatch.setattr(app_module, "ask_ai", lambda question: "câu trả lời")
+    client = app_module.app.test_client()
+
+    response = client.post("/chat", json={"message": "câu hỏi"})
+
+    payload = response.get_json()
+    assert set(payload.keys()) == {"response"}
+    assert "pieces" not in payload
+    assert "normalized_question" not in payload
+
+
+def test_punctuation_only_message_returns_rephrase():
+    client = app_module.app.test_client()
+
+    response = client.post("/chat", json={"message": "!!!"})
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert set(payload.keys()) == {"response"}
+    assert payload["response"] == chatbox.REPHRASE

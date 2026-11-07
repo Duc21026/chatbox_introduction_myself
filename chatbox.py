@@ -1,22 +1,24 @@
 import json
 import os
+import re
+import unicodedata
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
-import pandas as pd
-from langchain_community.document_loaders import (
-    TextLoader,
-    PyPDFLoader,
-    Docx2txtLoader,
-)
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from rapidfuzz import process
+from rapidfuzz import fuzz, process
+
+from documents import extract_segments, is_supported_source
+from text_normalization import normalize_text
 
 REFUSAL = "Tôi không biết"
+REPHRASE = "Bạn vui lòng nhập lại câu hỏi rõ ràng hơn."
 
 
 def _env_float(name, default):
@@ -42,6 +44,8 @@ class Config:
     ollama_base_url: str
     chunk_size: int
     chunk_overlap: int
+    top_k: int
+    query_rewrite: str
 
 
 def load_config():
@@ -51,6 +55,19 @@ def load_config():
             "Model Qwen3 không thuộc cấu hình của chatbot này. "
             "Hãy dùng một cỡ Qwen2.5 (1.5b, 3b, 7b hoặc 14b)."
         )
+
+    top_k = int(_env_float("CHATBOT_TOP_K", 3))
+    if top_k < 1:
+        raise RuntimeError("CHATBOT_TOP_K phải lớn hơn hoặc bằng 1")
+
+    query_rewrite = os.environ.get(
+        "CHATBOT_QUERY_REWRITE", "auto"
+    ).strip().lower()
+    if query_rewrite not in {"auto", "always", "off"}:
+        raise RuntimeError(
+            "CHATBOT_QUERY_REWRITE phải là một trong: auto, always, off"
+        )
+
     return Config(
         answer_model=answer_model,
         embedding_model=os.environ.get("CHATBOT_EMBEDDING_MODEL", "bge-m3").strip(),
@@ -63,6 +80,8 @@ def load_config():
         ),
         chunk_size=int(_env_float("CHATBOT_CHUNK_SIZE", 500)),
         chunk_overlap=int(_env_float("CHATBOT_CHUNK_OVERLAP", 50)),
+        top_k=top_k,
+        query_rewrite=query_rewrite,
     )
 
 
@@ -72,6 +91,48 @@ _db = None
 _llm = None
 _qa_data = None
 _index_embedding_model = None
+_index_signature = None
+
+
+class NormalizedEmbeddings(Embeddings):
+    """Embedding wrapper that always feeds the shared normalized form."""
+
+    def __init__(self, base):
+        self._base = base
+
+    def embed_documents(self, texts):
+        return self._base.embed_documents(
+            [
+                normalize_text(text, lowercase=False) or text
+                for text in texts
+            ]
+        )
+
+    def embed_query(self, text):
+        return self._base.embed_query(normalize_text(text) or text)
+
+
+@dataclass(frozen=True)
+class NormalizedQuestion:
+    original: str
+    normalized: str
+    rewritten: Optional[str] = None
+    rewrite_applied: bool = False
+
+    @property
+    def search_form(self):
+        return self.rewritten if self.rewritten else self.normalized
+
+
+@dataclass
+class RetrievalDiagnostic:
+    original_question: str
+    normalized_question: str
+    rewritten_question: Optional[str] = None
+    source_names: list = field(default_factory=list)
+    pieces: list = field(default_factory=list)
+    passed_threshold: bool = False
+    outcome: str = "refused"
 
 
 def validate_paths():
@@ -87,38 +148,51 @@ def validate_paths():
         )
 
 
-def _load_documents():
+def _load_documents(data_dir=None):
+    directory = data_dir or config.data_dir
     documents = []
-    for filename in sorted(os.listdir(config.data_dir)):
-        path = os.path.join(config.data_dir, filename)
+    for filename in sorted(os.listdir(directory)):
+        if not is_supported_source(filename):
+            continue
+        path = os.path.join(directory, filename)
         if not os.path.isfile(path):
             continue
         try:
-            if filename.endswith(".txt"):
-                documents.extend(
-                    TextLoader(path, encoding="utf-8").load()
-                )
-            elif filename.endswith(".pdf"):
-                documents.extend(PyPDFLoader(path).load())
-            elif filename.endswith(".docx"):
-                documents.extend(Docx2txtLoader(path).load())
-            elif filename.endswith(".xlsx"):
-                df = pd.read_excel(path)
-                for _, row in df.iterrows():
-                    text = " | ".join(
-                        f"{col}: {row[col]}" for col in df.columns
-                    )
-                    documents.append(Document(page_content=text))
-            elif filename.endswith(".csv"):
-                df = pd.read_csv(path)
-                for _, row in df.iterrows():
-                    text = " | ".join(
-                        f"{col}: {row[col]}" for col in df.columns
-                    )
-                    documents.append(Document(page_content=text))
+            segments = extract_segments(path)
         except Exception as exc:
-            raise RuntimeError(f"Không đọc được tệp dữ liệu {path}: {exc}") from exc
-    return [doc for doc in documents if doc.page_content and doc.page_content.strip()]
+            raise RuntimeError(
+                f"Không đọc được tệp dữ liệu {path}: {exc}"
+            ) from exc
+        for segment in segments:
+            text = segment.get("text") or ""
+            if not text.strip():
+                continue
+            metadata = {"source": filename, "source_path": path}
+            page = segment.get("page")
+            if page is not None:
+                metadata["page"] = page
+            documents.append(Document(page_content=text, metadata=metadata))
+    return documents
+
+
+def _source_signature(data_dir=None):
+    directory = data_dir or config.data_dir
+    entries = []
+    for filename in sorted(os.listdir(directory)):
+        if not is_supported_source(filename):
+            continue
+        path = os.path.join(directory, filename)
+        if not os.path.isfile(path):
+            continue
+        status = os.stat(path)
+        entries.append([filename, status.st_mtime_ns, status.st_size])
+    payload = {
+        "files": entries,
+        "embedding_model": config.embedding_model,
+        "chunk_size": config.chunk_size,
+        "chunk_overlap": config.chunk_overlap,
+    }
+    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
 
 def _load_qa_data():
@@ -129,7 +203,10 @@ def _load_qa_data():
             if not line or "|" not in line:
                 continue
             question, answer = line.split("|", 1)
-            qa_data[question.strip().lower()] = answer.strip()
+            normalized = normalize_text(question)
+            if not normalized:
+                continue
+            qa_data[normalized] = answer.strip()
     return qa_data
 
 
@@ -141,23 +218,43 @@ def get_qa_data():
 
 
 def get_db():
-    global _db, _index_embedding_model
-    if _db is None:
-        validate_paths()
-        documents = _load_documents()
-        if not documents:
-            raise RuntimeError(
-                f"Không có nội dung đọc được trong thư mục dữ liệu: {config.data_dir}"
-            )
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.chunk_size, chunk_overlap=config.chunk_overlap
-        )
-        chunks = splitter.split_documents(documents)
-        embeddings = OllamaEmbeddings(
+    global _db, _index_embedding_model, _index_signature
+    validate_paths()
+    signature = _source_signature()
+
+    if _db is not None and signature == _index_signature:
+        return _db
+
+    documents = _load_documents()
+    if not documents:
+        _db = None
+        _index_embedding_model = config.embedding_model
+        _index_signature = signature
+        return None
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=config.chunk_size,
+        chunk_overlap=config.chunk_overlap,
+        separators=["\n\n", "\n", ". ", "! ", "? ", "; ", ", ", " ", ""],
+    )
+    chunks = splitter.split_documents(documents)
+    counters = {}
+    for chunk in chunks:
+        source = chunk.metadata.get("source", "")
+        chunk_index = counters.get(source, 0)
+        chunk.metadata["chunk_index"] = chunk_index
+        counters[source] = chunk_index + 1
+
+    embeddings = NormalizedEmbeddings(
+        OllamaEmbeddings(
             model=config.embedding_model, base_url=config.ollama_base_url
         )
-        _db = FAISS.from_documents(chunks, embeddings)
-        _index_embedding_model = config.embedding_model
+    )
+    new_db = FAISS.from_documents(chunks, embeddings)
+
+    _db = new_db
+    _index_embedding_model = config.embedding_model
+    _index_signature = signature
     return _db
 
 
@@ -235,29 +332,133 @@ Câu hỏi:
 {question}"""
 
 
-def ask_ai(question):
+def _has_vietnamese_diacritics(text):
+    if "đ" in text or "Đ" in text:
+        return True
+    decomposed = unicodedata.normalize("NFD", text)
+    return any(unicodedata.combining(character) for character in decomposed)
+
+
+def _has_noise(text):
+    return bool(re.search(r"(\S)\1{2,}", text)) or bool(
+        re.search(r"([!?.,])\1+", text)
+    )
+
+
+def _should_rewrite(original, normalized):
+    if config.query_rewrite == "off":
+        return False
+    if config.query_rewrite == "always":
+        return True
+    return (not _has_vietnamese_diacritics(normalized)) or _has_noise(original)
+
+
+def _rewrite_query(question):
+    prompt = (
+        "Bạn là bộ sửa lỗi chính tả tiếng Việt. "
+        "Hãy sửa lỗi chính tả và bổ sung dấu tiếng Việt còn thiếu cho câu hỏi sau. "
+        "Giữ nguyên tên riêng, viết tắt và con số. "
+        "Chỉ trả về đúng một câu đã sửa, không giải thích.\n\n"
+        f"Câu hỏi: {question}"
+    )
+    try:
+        response = get_llm().invoke(prompt)
+        candidate = (response.content or "").strip()
+    except Exception:
+        return None
+
+    if not candidate:
+        return None
+    if len(candidate) > max(len(question) * 3, len(question) + 60):
+        return None
+
+    normalized = normalize_text(candidate)
+    return normalized or None
+
+
+def prepare_question(question):
     if not isinstance(question, str) or not question.strip():
         raise ValueError("Câu hỏi không được để trống")
 
-    original_question = question.strip()
-    normalized_question = original_question.lower()
+    original = question.strip()
+    normalized = normalize_text(original)
+    if not normalized:
+        return NormalizedQuestion(original=original, normalized="")
 
-    best_match = process.extractOne(
-        normalized_question, get_qa_data().keys()
+    if _should_rewrite(original, normalized):
+        rewritten = _rewrite_query(original)
+        if rewritten:
+            rewritten = normalize_text(rewritten) or None
+        if rewritten:
+            return NormalizedQuestion(
+                original=original,
+                normalized=normalized,
+                rewritten=rewritten,
+                rewrite_applied=True,
+            )
+
+    return NormalizedQuestion(original=original, normalized=normalized)
+
+
+def ask_ai_detailed(question):
+    prepared = prepare_question(question)
+    diagnostic = RetrievalDiagnostic(
+        original_question=prepared.original,
+        normalized_question=prepared.normalized,
+        rewritten_question=prepared.rewritten,
     )
-    if best_match and best_match[1] > config.fuzzy_match_cutoff:
-        return get_qa_data()[best_match[0]]
 
-    retrieved_docs = get_db().similarity_search_with_score(
-        normalized_question, k=2
+    if not prepared.normalized:
+        diagnostic.outcome = "rephrase"
+        return REPHRASE, diagnostic
+
+    qa_data = get_qa_data()
+    if qa_data:
+        best_match = process.extractOne(
+            prepared.normalized,
+            qa_data.keys(),
+            scorer=fuzz.ratio,
+        )
+        if best_match and best_match[1] > config.fuzzy_match_cutoff:
+            diagnostic.outcome = "answered"
+            return qa_data[best_match[0]], diagnostic
+
+    db = get_db()
+    if db is None:
+        diagnostic.outcome = "refused"
+        return REFUSAL, diagnostic
+
+    retrieved_docs = db.similarity_search_with_score(
+        prepared.search_form, k=config.top_k
     )
-    if not retrieved_docs:
-        return REFUSAL
 
-    best_doc, best_score = retrieved_docs[0]
-    if not is_relevant(best_score):
-        return REFUSAL
+    selected = []
+    for document, score in retrieved_docs:
+        if not is_relevant(score):
+            continue
+        selected.append(document)
+        source = document.metadata.get("source", "")
+        if source and source not in diagnostic.source_names:
+            diagnostic.source_names.append(source)
+        diagnostic.pieces.append(
+            {
+                "source_name": source,
+                "chunk_index": document.metadata.get("chunk_index"),
+                "score": score,
+                "excerpt": document.page_content[:200],
+            }
+        )
 
-    context = "\n".join(doc.page_content for doc, _ in retrieved_docs)
-    response = get_llm().invoke(_build_prompt(context, original_question))
-    return response.content
+    diagnostic.passed_threshold = bool(selected)
+    if not selected:
+        diagnostic.outcome = "refused"
+        return REFUSAL, diagnostic
+
+    context = "\n".join(document.page_content for document in selected)
+    response = get_llm().invoke(_build_prompt(context, prepared.original))
+    diagnostic.outcome = "answered"
+    return response.content, diagnostic
+
+
+def ask_ai(question):
+    return ask_ai_detailed(question)[0]

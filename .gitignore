@@ -11,6 +11,7 @@ env/
 .vent/
 vent/
 
+
 # Local configuration and secrets
 .env
 .env.*
@@ -44,3 +45,6 @@ pip-wheel-metadata/
 Thumbs.db
 *.swp
 *.tmp
+*.part
+
+data/

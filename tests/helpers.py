@@ -1,5 +1,7 @@
 import json
+import os
 import urllib.request
+from types import SimpleNamespace
 
 
 def _model_present(model, installed):
@@ -30,7 +32,7 @@ def ollama_ready(answer_model, embedding_model, base_url, timeout=2):
 def contains_answer(answer, expected):
     if expected is None:
         return False
-    if expected in answer:
+    if expected.casefold() in answer.casefold():
         return True
     try:
         expected_number = float(expected)
@@ -43,3 +45,43 @@ def contains_answer(answer, expected):
         except ValueError:
             continue
     return False
+
+
+def write_text_source(directory, name, content):
+    path = os.path.join(str(directory), name)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(content)
+    return path
+
+
+class FakeEmbeddings:
+    def embed_documents(self, texts):
+        return [[float(len(text)), 1.0, 0.0] for text in texts]
+
+    def embed_query(self, text):
+        return [float(len(text)), 1.0, 0.0]
+
+
+class RecordingDB:
+    def __init__(self, results):
+        self.results = results
+        self.queries = []
+
+    def similarity_search_with_score(self, query, k=2):
+        self.queries.append((query, k))
+        return self.results
+
+
+class RecordingLLM:
+    def __init__(self, content):
+        self.content = content
+        self.prompts = []
+
+    def invoke(self, prompt):
+        self.prompts.append(prompt)
+        return SimpleNamespace(content=self.content)
+
+
+class ExplodingDB:
+    def similarity_search_with_score(self, query, k=2):
+        raise AssertionError("Không được gọi tìm kiếm khi không cần thiết")

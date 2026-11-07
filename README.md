@@ -25,7 +25,7 @@ index.html  ──POST /chat──▶  app.py (Flask)
                  ┌───────────────┴───────────────┐
                  ▼                               ▼
         Khớp mờ qa.txt                  RAG: bge-m3 + FAISS
-        (RapidFuzz)                     tìm 2 đoạn liên quan
+        (RapidFuzz)                     tìm top-k đoạn liên quan
                  │                               │
                  └───────────────┬───────────────┘
                                  ▼
@@ -41,6 +41,8 @@ Các thành phần chính:
 |------------|---------|
 | `app.py` | HTTP API `POST /chat`, kiểm tra dữ liệu vào, trả lỗi rõ ràng |
 | `chatbox.py` | Đọc tài liệu, chia đoạn, embedding, FAISS, cấu hình, prompt, gọi LLM |
+| `documents.py` | Thêm/thay thế/xóa/liệt kê nguồn, ghi nguyên tử, trích xuất PDF |
+| `text_normalization.py` | Chuẩn hóa tiếng Việt dùng chung cho tài liệu và câu hỏi |
 | `index.html` | Giao diện chat tĩnh |
 | `data/` | Kho dữ liệu hồ sơ (`.txt`, `.xlsx`, `.pdf`, `.docx`, `.csv`) |
 | `qa.txt` | Cặp câu hỏi – câu trả lời có sẵn |
@@ -100,6 +102,8 @@ python scripts/recommend_model.py
 | `CHATBOT_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Địa chỉ Ollama |
 | `CHATBOT_CHUNK_SIZE` | `500` | Kích thước đoạn |
 | `CHATBOT_CHUNK_OVERLAP` | `50` | Độ chồng đoạn |
+| `CHATBOT_TOP_K` | `3` | Số đoạn lấy ra mỗi câu hỏi; tăng lên `5` khi thông tin nằm rải rác |
+| `CHATBOT_QUERY_REWRITE` | `auto` | Sửa chính tả/bổ sung dấu cho câu hỏi trước khi tìm kiếm: `auto`, `always`, `off` |
 
 Ứng dụng không tự đọc tệp `.env`; hãy đặt biến trong shell hoặc dùng công cụ nạp `.env`.
 
@@ -115,6 +119,29 @@ Windows PowerShell:
 $env:CHATBOT_ANSWER_MODEL = "qwen2.5:3b"
 $env:CHATBOT_EMBEDDING_MODEL = "bge-m3"
 ```
+
+## Quản lý tài liệu
+
+Nguồn tài liệu được lưu thành tệp trong `CHATBOT_DATA_DIR` (mặc định `data/`). Tên nguồn là tên tệp và là khóa để thay thế/xóa/liệt kê. Hỗ trợ `.txt`, `.pdf`, `.docx`, `.xlsx`, `.csv`; PDF phải có lớp văn bản (không OCR PDF quét ảnh).
+
+```bash
+# Thêm mới (hoặc cập nhật nếu tên đã tồn tại)
+python scripts/manage_docs.py add /tmp/nghi-phep.txt --name nghi-phep.txt
+
+# Thay thế bắt buộc nguồn đã tồn tại
+python scripts/manage_docs.py replace /tmp/nghi-phep-moi.txt --name nghi-phep.txt
+
+# Xóa và liệt kê
+python scripts/manage_docs.py delete nghi-phep.txt
+python scripts/manage_docs.py list
+
+# Hỏi thử kèm chẩn đoán truy xuất
+python scripts/manage_docs.py ask "nhân viên được nghỉ bao nhiêu ngày phép?" --debug
+```
+
+Thao tác ghi dùng tệp tạm rồi thay thế nguyên tử, nên nếu lỗi thì bản cũ vẫn nguyên vẹn. Chỉ mục FAISS tự phát hiện thay đổi tệp và tạo lại khi cần, không cần khởi động lại Flask. `ask --debug` in câu hỏi gốc, dạng chuẩn hóa, dạng đã sửa, nguồn, điểm từng đoạn và kết quả (`answered`, `refused`, `rephrase`). Các thông tin này không xuất hiện trong `POST /chat`.
+
+Không cần thêm gói phụ thuộc: tính năng dùng lại Flask, LangChain, FAISS, Ollama, `pypdf`, `pandas`, `python-docx`, `docx2txt` và `RapidFuzz` đã có.
 
 ## Chạy ứng dụng
 
@@ -140,7 +167,7 @@ Phản hồi thành công:
 
 ```json
 {
-  "response": "GPA hiện tại là 8.30"
+  "response": ""
 }
 ```
 
@@ -186,6 +213,8 @@ Các kiểm thử cần Ollama và model thật sẽ tự bỏ qua nếu môi tr
 .
 ├── app.py                    # Flask API
 ├── chatbox.py                # RAG + cấu hình + gọi model
+├── documents.py              # Vòng đời nguồn: thêm/thay thế/xóa/liệt kê
+├── text_normalization.py     # Chuẩn hóa tiếng Việt dùng chung
 ├── index.html                # Giao diện chat
 ├── qa.txt                    # Câu hỏi đáp có sẵn
 ├── data/                     # Hồ sơ cá nhân
@@ -195,6 +224,7 @@ Các kiểm thử cần Ollama và model thật sẽ tự bỏ qua nếu môi tr
 │   ├── report.py             # Tổng hợp bảng so sánh
 │   └── results/              # Kết quả sinh ra
 ├── scripts/
+│   ├── manage_docs.py        # CLI quản lý tài liệu
 │   └── recommend_model.py    # Gợi ý cỡ model theo RAM
 ├── tests/                    # Kiểm thử pytest
 ├── requirements.txt
@@ -203,7 +233,8 @@ Các kiểm thử cần Ollama và model thật sẽ tự bỏ qua nếu môi tr
 
 ## Ghi chú
 
-- Chỉ mục FAISS được tạo lại trong bộ nhớ mỗi lần khởi động; không lưu vector cũ.
+- Chỉ mục FAISS được tạo lại trong bộ nhớ mỗi lần khởi động và mỗi khi dấu vân tay tệp/cấu hình thay đổi; không lưu vector cũ.
+- Câu hỏi và tài liệu dùng chung một pipeline chuẩn hóa tiếng Việt; dạng gốc vẫn được giữ cho câu trả lời và hiển thị.
 - Khi đổi model embedding, ngưỡng `CHATBOT_RELEVANCE_THRESHOLD` phải được chỉnh lại vì dải điểm thay đổi.
 - Model Qwen3 không thuộc cấu hình của ứng dụng; chương trình sẽ báo lỗi nếu chọn Qwen3.
 - Câu trả lời chỉ dựa trên `data/`, `qa.txt`; câu hỏi ngoài phạm vi trả về `Tôi không biết`.
