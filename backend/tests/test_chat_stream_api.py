@@ -53,7 +53,7 @@ def test_stream_contract_rejects_blank_message():
 
     response = client.post("/chat/stream", json={"message": "   "})
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "error" in response.get_json()
 
 
@@ -64,4 +64,9 @@ def test_chat_endpoint_remains_unchanged(monkeypatch):
     response = client.post("/chat", json={"message": "câu hỏi"})
 
     assert response.status_code == 200
-    assert response.get_json() == {"response": "đầy đủ"}
+    assert response.get_json() == {
+        "type": "answer",
+        "score": None,
+        "response": "đầy đủ",
+        "answer_bullets": None,
+    }

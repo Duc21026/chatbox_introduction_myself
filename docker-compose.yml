@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ── Chatbot – Văn Phú Đức ─────────────────────────────────────────────────────
 # Services:
 #   ollama   – local LLM runtime (models stored in a named volume)
@@ -7,13 +5,12 @@ version: "3.9"
 #   frontend – React SPA served by nginx   (depends on backend)
 #
 # Quick start:
-#   docker compose up --build
-#   # then pull the required models once:
+#   docker compose up -d ollama
 #   docker compose exec ollama ollama pull bge-m3
 #   docker compose exec ollama ollama pull qwen2.5:7b
+#   docker compose up --build -d
 #
-# Production (pre-built images, no source needed):
-#   VITE_API_BASE_URL=/  docker compose up -d
+# The UI is served at http://localhost:3000 and proxies /chat to the backend.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -25,8 +22,11 @@ services:
     restart: unless-stopped
     volumes:
       - ollama_models:/root/.ollama   # persist downloaded models
-    ports:
-      - "11434:11434"                 # expose only when you need direct access
+    # Ollama is only consumed by the backend on the internal Compose network.
+    # Publishing 11434 is unnecessary and conflicts with a host Ollama install.
+    # Uncomment to access it directly from the host:
+    # ports:
+    #   - "11434:11434"
     # GPU passthrough (uncomment if you have an NVIDIA GPU and nvidia-container-toolkit):
     # deploy:
     #   resources:
@@ -36,7 +36,7 @@ services:
     #           count: all
     #           capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      test: ["CMD", "ollama", "list"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -50,30 +50,31 @@ services:
     container_name: chatbot-backend
     restart: unless-stopped
     env_file:
-      - backend/.env          # optional – overrides defaults in Dockerfile
+      # Optional – overrides defaults from backend/Dockerfile and `environment`.
+      - path: backend/.env
+        required: false
     environment:
       CHATBOT_OLLAMA_BASE_URL: http://ollama:11434
-      CHATBOT_DATA_DIR: backend/data
-      CHATBOT_QA_PATH: backend/qa.txt
+      CHATBOT_SOURCE_PATH: backend/data/chatbot.txt
+      CHATBOT_LEGACY_SOURCES: "false"
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
     volumes:
-      - ./backend/data:/app/backend/data        # persist / hot-swap documents
-      - ./backend/qa.txt:/app/backend/qa.txt    # persist Q&A pairs
-      - ./backend/kb.json:/app/backend/kb.json  # persist KB edits
-      - kb_embeddings_cache:/app/backend        # persist embedding cache between restarts
+      # The unified source is the only knowledge file mounted into the
+      # container. Hot edits are picked up using the source signature.
+      - ./backend/data/chatbot.txt:/app/backend/data/chatbot.txt
     ports:
       - "5000:5000"           # expose for direct testing; nginx proxies in prod
     depends_on:
       ollama:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/chat",
-             "-X", "POST",
-             "-H", "Content-Type: application/json",
-             "-d", "{\"message\":\"ping\"}"]
+      # TCP check: the Flask app only starts listening after warm_up() has
+      # validated Ollama, both models and the FAISS index.
+      test: ["CMD", "python", "-c",
+             "import socket, sys; s = socket.socket(); s.settimeout(2); sys.exit(s.connect_ex(('127.0.0.1', 5000)))"]
       interval: 30s
-      timeout: 15s
+      timeout: 10s
       retries: 5
       start_period: 60s     # allow time for FAISS index to build on first run
 
@@ -95,7 +96,7 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
       interval: 20s
       timeout: 5s
       retries: 3

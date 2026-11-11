@@ -8,7 +8,12 @@ def test_chat_contract_shape(monkeypatch):
     response = client.post("/chat", json={"message": "câu hỏi"})
 
     assert response.status_code == 200
-    assert response.get_json() == {"response": "câu trả lời"}
+    assert response.get_json() == {
+        "type": "answer",
+        "score": None,
+        "response": "câu trả lời",
+        "answer_bullets": None,
+    }
 
 
 def test_chat_contract_rejects_blank_message():
@@ -16,7 +21,7 @@ def test_chat_contract_rejects_blank_message():
 
     response = client.post("/chat", json={"message": "   "})
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "error" in response.get_json()
 
 

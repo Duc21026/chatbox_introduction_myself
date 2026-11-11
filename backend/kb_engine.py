@@ -95,6 +95,8 @@ _questions_norm: list[str] = []     # normalized versions (for fuzzy)
 _item_indices: list[int] = []       # kb_items index for each question
 _embeddings: Optional[np.ndarray] = None  # shape (N, D), float32
 _query_cache: Optional[LRUCache] = None   # initialized lazily
+_kb_hash_value: Optional[str] = None
+_source_signature = None
 
 # ---------------------------------------------------------------------------
 # Cache helpers
@@ -107,10 +109,9 @@ def _get_query_cache() -> LRUCache:
     return _query_cache
 
 
-def _kb_hash(kb_path: str) -> str:
-    """Return MD5 hex digest of kb.json content."""
-    with open(kb_path, "rb") as fh:
-        return hashlib.md5(fh.read()).hexdigest()
+def _kb_hash(source) -> str:
+    """Return the KB hash provided by a ``DerivedSource``."""
+    return source.kb_hash
 
 
 def _save_cache(path: str, kb_hash: str, questions: list[str],
@@ -146,29 +147,18 @@ def _load_cache(path: str) -> Optional[dict]:
 # KB loading & validation
 # ---------------------------------------------------------------------------
 
-def _load_kb(kb_path: str) -> list[dict]:
-    """Load and validate kb.json. Returns list of valid KnowledgeItem dicts."""
-    if not os.path.isfile(kb_path):
-        raise RuntimeError(
-            f"KB Engine: không tìm thấy file kb.json tại '{kb_path}'. "
-            "Hãy kiểm tra CHATBOT_KB_PATH."
-        )
-    try:
-        with open(kb_path, encoding="utf-8") as fh:
-            raw = json.load(fh)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"KB Engine: kb.json không hợp lệ (JSON parse error): {exc}") from exc
-
-    if not isinstance(raw, list):
-        raise RuntimeError("KB Engine: kb.json phải là một JSON array.")
-    if len(raw) == 0:
-        raise RuntimeError("KB Engine: kb.json trống, không có KnowledgeItem nào.")
+def _load_kb(raw_items) -> list[dict]:
+    """Validate KB items supplied by a ``DerivedSource``."""
 
     items: list[dict] = []
     seen_ids: set[str] = set()
 
-    for i, item in enumerate(raw):
-        if not isinstance(item, dict):
+    for i, raw_item in enumerate(raw_items or []):
+        if hasattr(raw_item, "as_dict"):
+            item = raw_item.as_dict()
+        elif isinstance(raw_item, dict):
+            item = raw_item
+        else:
             logger.warning("KB Engine: bỏ qua mục %d (không phải object)", i)
             continue
 
@@ -200,9 +190,6 @@ def _load_kb(kb_path: str) -> list[dict]:
 
         seen_ids.add(item_id)
         items.append(item)
-
-    if not items:
-        raise RuntimeError("KB Engine: không có KnowledgeItem hợp lệ nào sau khi validate.")
 
     return items
 
@@ -298,22 +285,42 @@ def _build_unknown_response() -> dict:
 # Warm-up
 # ---------------------------------------------------------------------------
 
-def warm_up_kb() -> None:
-    """Load kb.json, build or restore embedding cache.
+def warm_up_kb(source=None) -> None:
+    """Load KB items from the unified source and restore/build embeddings.
 
     Called from app.py during server startup (alongside chatbox.warm_up()).
     Non-fatal: logs errors but does not raise so the server can still start
     and fall back to the RAG pipeline.
     """
     global _kb_items, _questions, _questions_norm, _item_indices, _embeddings
+    global _kb_hash_value, _source_signature
 
-    kb_path = _kb_path()
-    cache_path = _cache_path()
+    if source is None:
+        try:
+            try:
+                from . import chatbox
+            except ImportError:
+                import chatbox
+            source = chatbox.get_source()
+        except Exception as exc:
+            logger.error(
+                "KB Engine: không đọc được nguồn hợp nhất: %s — KB Engine disabled.",
+                exc,
+            )
+            return
 
-    try:
-        items = _load_kb(kb_path)
-    except RuntimeError as exc:
-        logger.error("KB Engine: %s — KB Engine disabled, falling back to RAG.", exc)
+    items = _load_kb(source.kb_items)
+    _source_signature = source.signature
+    current_hash = _kb_hash(source)
+    _kb_hash_value = current_hash
+
+    if not items:
+        _kb_items = []
+        _questions = []
+        _questions_norm = []
+        _item_indices = []
+        _embeddings = None
+        logger.info("KB Engine: nguồn không có bản ghi qa — KB Engine disabled.")
         return
 
     # Flatten questions list
@@ -325,7 +332,7 @@ def warm_up_kb() -> None:
                 questions.append(q.strip())
                 item_indices.append(idx)
 
-    current_hash = _kb_hash(kb_path)
+    cache_path = _cache_path()
     t0 = time.monotonic()
 
     # Try to load from cache
@@ -345,7 +352,7 @@ def warm_up_kb() -> None:
 
     # Build embeddings
     logger.info(
-        "KB Engine: building embeddings for %d questions (kb.json changed or no cache)…",
+        "KB Engine: building embeddings for %d questions (source changed or no cache)…",
         len(questions),
     )
     try:
@@ -364,9 +371,28 @@ def warm_up_kb() -> None:
 
     elapsed = time.monotonic() - t0
     logger.info(
-        "KB Engine: %d items, %d questions — embeddings rebuilt (kb.json changed) in %.1fs",
+        "KB Engine: %d items, %d questions — embeddings rebuilt (source changed) in %.1fs",
         len(items), len(questions), elapsed,
     )
+
+
+def _refresh_if_changed() -> None:
+    """Rebuild KB state when the unified source's KB hash changes."""
+
+    if _kb_hash_value is None:
+        return
+    try:
+        try:
+            from . import chatbox
+        except ImportError:
+            import chatbox
+        source = chatbox.get_source()
+    except Exception:
+        return
+    if source.kb_hash == _kb_hash_value:
+        return
+    logger.info("KB Engine: phát hiện nguồn thay đổi, đang làm mới chỉ mục KB…")
+    warm_up_kb(source)
 
 # ---------------------------------------------------------------------------
 # Public query interface
@@ -377,6 +403,7 @@ def query(message: str) -> Optional[dict]:
 
     None signals the caller (app.py) to fall back to the RAG pipeline.
     """
+    _refresh_if_changed()
     if _embeddings is None or len(_embeddings) == 0:
         return None
 

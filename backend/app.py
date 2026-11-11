@@ -154,6 +154,10 @@ def chatbot_stream():
 
 
 if __name__ == "__main__":
-    kb_engine.warm_up_kb()
     warm_up()
-    app.run(debug=True)
+    kb_engine.warm_up_kb()
+    app.run(
+        host=os.environ.get("CHATBOT_HOST", "127.0.0.1"),
+        port=int(os.environ.get("CHATBOT_PORT", "5000")),
+        debug=os.environ.get("FLASK_ENV", "development") != "production",
+    )

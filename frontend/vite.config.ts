@@ -10,13 +10,25 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          markdown: [
-            "react-markdown",
-            "remark-gfm",
-            "rehype-highlight",
-          ],
-          react: ["react", "react-dom", "zustand", "lucide-react"],
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+
+          if (
+            id.includes("node_modules/react-markdown") ||
+            id.includes("node_modules/remark-gfm") ||
+            id.includes("node_modules/rehype-highlight")
+          ) {
+            return "markdown";
+          }
+
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/zustand/") ||
+            id.includes("node_modules/lucide-react/")
+          ) {
+            return "react";
+          }
         },
       },
     },

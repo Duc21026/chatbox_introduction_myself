@@ -3,6 +3,8 @@
 import re
 import unicodedata
 
+NORMALIZER_VERSION = "1"
+
 _REPEATED_CHARACTER = re.compile(r"(.)\1{2,}", re.DOTALL)
 _REPEATED_PUNCTUATION = re.compile(r"([!?.,])\1+")
 _WHITESPACE = re.compile(r"\s+")

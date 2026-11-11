@@ -1,7 +1,18 @@
 import json
 import os
+import unicodedata
 import urllib.request
 from types import SimpleNamespace
+
+
+def _comparable(text):
+    return (
+        unicodedata.normalize("NFC", str(text))
+        .replace("–", "-")
+        .replace("—", "-")
+        .replace("−", "-")
+        .casefold()
+    )
 
 
 def _model_present(model, installed):
@@ -32,7 +43,7 @@ def ollama_ready(answer_model, embedding_model, base_url, timeout=2):
 def contains_answer(answer, expected):
     if expected is None:
         return False
-    if expected.casefold() in answer.casefold():
+    if _comparable(expected) in _comparable(answer):
         return True
     try:
         expected_number = float(expected)

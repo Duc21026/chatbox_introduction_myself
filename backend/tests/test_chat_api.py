@@ -12,7 +12,12 @@ def test_chat_returns_single_response(monkeypatch):
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert set(payload.keys()) == {"response"}
+    assert set(payload.keys()) == {
+        "type",
+        "score",
+        "response",
+        "answer_bullets",
+    }
     assert isinstance(payload["response"], str)
 
 
@@ -32,7 +37,7 @@ def test_empty_message_returns_client_error(monkeypatch):
 
     response = client.post("/chat", json={"message": "   "})
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "error" in response.get_json()
 
 
@@ -55,7 +60,12 @@ def test_diagnostics_are_not_exposed(monkeypatch):
     response = client.post("/chat", json={"message": "câu hỏi"})
 
     payload = response.get_json()
-    assert set(payload.keys()) == {"response"}
+    assert set(payload.keys()) == {
+        "type",
+        "score",
+        "response",
+        "answer_bullets",
+    }
     assert "pieces" not in payload
     assert "normalized_question" not in payload
 
@@ -67,5 +77,10 @@ def test_punctuation_only_message_returns_rephrase():
 
     assert response.status_code == 200
     payload = response.get_json()
-    assert set(payload.keys()) == {"response"}
+    assert set(payload.keys()) == {
+        "type",
+        "score",
+        "response",
+        "answer_bullets",
+    }
     assert payload["response"] == chatbox.REPHRASE

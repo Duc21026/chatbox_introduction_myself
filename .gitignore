@@ -37,8 +37,9 @@ pip-wheel-metadata/
 !**/.env.example
 
 # Local data, logs, archives, and partial writes
-data/
-backend/data/
+/data/
+backend/data/*
+!backend/data/chatbot.txt
 *.log
 *.tmp
 *.part
@@ -58,3 +59,5 @@ backend/embeddings_cache.npz
     .DS_Store
     Thumbs.db
     *.swp
+    
+Spec/template.txt
