@@ -44,13 +44,17 @@ backend/data/
 *.part
 qa copy.txt
 
+# KB Engine generated cache
+backend/embeddings_cache.npz
+
 # Spec Kit / tooling state
 .specify/
 .opencode/
+.kiro
 
 # Editors and OS files
 .vscode/
 .idea/
-.DS_Store
-Thumbs.db
-*.swp
+    .DS_Store
+    Thumbs.db
+    *.swp

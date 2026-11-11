@@ -1,0 +1,105 @@
+version: "3.9"
+
+# ── Chatbot – Văn Phú Đức ─────────────────────────────────────────────────────
+# Services:
+#   ollama   – local LLM runtime (models stored in a named volume)
+#   backend  – Flask / LangChain / FAISS  (depends on ollama)
+#   frontend – React SPA served by nginx   (depends on backend)
+#
+# Quick start:
+#   docker compose up --build
+#   # then pull the required models once:
+#   docker compose exec ollama ollama pull bge-m3
+#   docker compose exec ollama ollama pull qwen2.5:7b
+#
+# Production (pre-built images, no source needed):
+#   VITE_API_BASE_URL=/  docker compose up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Ollama LLM runtime ───────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: chatbot-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama   # persist downloaded models
+    ports:
+      - "11434:11434"                 # expose only when you need direct access
+    # GPU passthrough (uncomment if you have an NVIDIA GPU and nvidia-container-toolkit):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ── Python backend ────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: chatbot-backend
+    restart: unless-stopped
+    env_file:
+      - backend/.env          # optional – overrides defaults in Dockerfile
+    environment:
+      CHATBOT_OLLAMA_BASE_URL: http://ollama:11434
+      CHATBOT_DATA_DIR: backend/data
+      CHATBOT_QA_PATH: backend/qa.txt
+      FLASK_ENV: production
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./backend/data:/app/backend/data        # persist / hot-swap documents
+      - ./backend/qa.txt:/app/backend/qa.txt    # persist Q&A pairs
+      - ./backend/kb.json:/app/backend/kb.json  # persist KB edits
+      - kb_embeddings_cache:/app/backend        # persist embedding cache between restarts
+    ports:
+      - "5000:5000"           # expose for direct testing; nginx proxies in prod
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/chat",
+             "-X", "POST",
+             "-H", "Content-Type: application/json",
+             "-d", "{\"message\":\"ping\"}"]
+      interval: 30s
+      timeout: 15s
+      retries: 5
+      start_period: 60s     # allow time for FAISS index to build on first run
+
+  # ── React / Vite frontend (nginx) ────────────────────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        # In Docker networking the browser talks to nginx which proxies /chat.
+        # Setting the URL to "" (or "/") makes the frontend call /chat relative
+        # to its own origin, which nginx then forwards to the backend service.
+        VITE_API_BASE_URL: ""
+    container_name: chatbot-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  ollama_models:
+    driver: local

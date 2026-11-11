@@ -1,0 +1,14 @@
+# Python artefacts
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Virtual environment
+.venv/
+
+# Secrets
+.env
+
+# Generated cache (rebuilt automatically on startup)
+embeddings_cache.npz
