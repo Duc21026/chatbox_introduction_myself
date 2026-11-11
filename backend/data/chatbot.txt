@@ -1,0 +1,799 @@
+CHATBOT-SOURCE v1
+
+=== RECORD ===
+kind: qa
+id: intro
+topic: Giới thiệu bản thân
+questions:
+- Bạn là ai?
+- Giới thiệu về bản thân đi
+- Cho mình biết về bạn với
+- Bạn tên gì?
+- Bạn đang học ở đâu?
+answer:
+Mình là Văn Phú Đức, sinh viên Đại học Khoa học Tự nhiên – ĐHQG TP.HCM, chuyên ngành Khoa học Máy tính.
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: gpa
+topic: Học tập & Điểm số
+questions:
+- GPA của bạn là bao nhiêu?
+- Điểm trung bình của bạn?
+- Kết quả học tập của bạn?
+- Điểm tích lũy của bạn?
+- Bạn học giỏi không?
+answer:
+GPA hiện tại là 8.30 / 10 với 62 tín chỉ tích lũy, hoàn thành 17 môn học.
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: best-subjects
+topic: Học tập & Điểm số
+questions:
+- Môn nào bạn điểm cao nhất?
+- Bạn giỏi môn gì?
+- Môn học xuất sắc nhất của bạn?
+- Điểm 10 môn nào?
+answer:
+Đạt 10.0 ở Đại số tuyến tính và Vi tích phân 2. Điểm cao khác: Toán rời rạc 9.4, Vi tích phân 1 9.4, Kỹ năng mềm 9.3.
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: skills
+topic: Kỹ năng lập trình
+questions:
+- Bạn biết những ngôn ngữ lập trình nào?
+- Tech stack của bạn là gì?
+- Kỹ năng kỹ thuật của bạn?
+- Bạn dùng công nghệ gì?
+- Bạn có kỹ năng gì?
+bullets:
+- Ngôn ngữ: Python, JavaScript / TypeScript
+- Backend: Flask, FastAPI
+- Frontend: React, Vite
+- AI/ML: LangChain, FAISS, Ollama
+- Database: SQL, PostgreSQL
+- Tools: Git, Docker, Linux
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: projects
+topic: Dự án
+questions:
+- Bạn đã làm những dự án nào?
+- Dự án nổi bật của bạn?
+- Portfolio của bạn?
+- Bạn đã build gì?
+- Dự án cá nhân của bạn là gì?
+bullets:
+- Chatbot giới thiệu bản thân (Flask + LangChain + FAISS + Ollama)
+- Giao diện React SPA với streaming response và dark/light mode
+- Pipeline RAG tiếng Việt với bge-m3 embedding và Qwen2.5
+- Hệ thống đánh giá chatbot tự động với bộ câu hỏi tiếng Việt
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: contact
+topic: Liên hệ
+questions:
+- Liên hệ bạn thế nào?
+- Email của bạn là gì?
+- GitHub của bạn?
+- Mình có thể tìm bạn ở đâu?
+- Thông tin liên lạc?
+bullets:
+- GitHub: github.com/vanphuduc (ví dụ)
+- Email: vanphuduc@example.com (ví dụ)
+- LinkedIn: linkedin.com/in/vanphuduc (ví dụ)
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: university
+topic: Giới thiệu bản thân
+questions:
+- Bạn học trường nào?
+- Bạn đang học năm mấy?
+- Chuyên ngành của bạn là gì?
+- Bạn học ngành gì?
+answer:
+Sinh viên Đại học Khoa học Tự nhiên – ĐHQG TP.HCM, ngành Khoa học Máy tính (Khoa Công nghệ Thông tin).
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: ai-interests
+topic: Kỹ năng lập trình
+questions:
+- Bạn thích lĩnh vực nào trong CNTT?
+- Định hướng nghề nghiệp của bạn?
+- Bạn quan tâm đến AI không?
+- Bạn muốn làm gì sau khi ra trường?
+bullets:
+- Trí tuệ nhân tạo và Học máy (AI/ML)
+- Xử lý ngôn ngữ tự nhiên tiếng Việt (NLP)
+- Xây dựng hệ thống RAG và chatbot thông minh
+- Backend engineering với Python
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: strengths
+topic: Học tập & Điểm số
+questions:
+- Thế mạnh học tập của bạn là gì?
+- Bạn giỏi lĩnh vực nào?
+- Điểm mạnh của bạn là gì?
+- Bạn nổi bật ở điểm nào?
+answer:
+Rất mạnh về toán học, tư duy logic và tính toán. Đạt điểm cao ở các môn Đại số, Giải tích, Toán rời rạc.
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: weakness
+topic: Học tập & Điểm số
+questions:
+- Điểm yếu của bạn là gì?
+- Bạn đang cải thiện gì?
+- Môn nào bạn cần cải thiện?
+- Bạn còn hạn chế gì?
+answer:
+Cần cải thiện Cấu trúc dữ liệu và giải thuật (đạt 5.4). Đây là mục tiêu rèn luyện trong thời gian tới.
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: greeting
+topic: Giới thiệu bản thân
+questions:
+- Xin chào
+- Hello
+- Hi bạn
+- Chào bạn
+- Bạn có thể giúp mình không?
+answer:
+Xin chào! Mình là chatbot giới thiệu bản thân của Văn Phú Đức. Bạn muốn biết gì về mình nào?
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: chatbot-tech
+topic: Dự án
+questions:
+- Chatbot này được xây dựng như thế nào?
+- Công nghệ đằng sau chatbot này là gì?
+- Bạn dùng gì để làm chatbot này?
+- Tech stack của chatbot?
+bullets:
+- Backend: Python Flask + LangChain + FAISS
+- LLM: Qwen2.5 chạy cục bộ qua Ollama
+- Embedding: bge-m3 (đa ngôn ngữ, mạnh tiếng Việt)
+- Frontend: React + TypeScript + Vite
+- KB Engine: hybrid cosine + fuzzy scoring
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: hi
+topic: Câu hỏi thường gặp
+questions:
+- hi
+answer:
+tôi có thể giúp gì cho bạn
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: gpa-bao-nhieu
+topic: Câu hỏi thường gặp
+questions:
+- gpa bao nhiêu
+answer:
+GPA hiện tại là 8.30
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-trung-binh-hien-tai
+topic: Câu hỏi thường gặp
+questions:
+- điểm trung bình hiện tại
+answer:
+8.3
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: tong-tin-chi-bao-nhieu
+topic: Câu hỏi thường gặp
+questions:
+- tổng tín chỉ bao nhiêu
+answer:
+Đã tích lũy 62 tín chỉ
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: hoc-bao-nhieu-mon
+topic: Câu hỏi thường gặp
+questions:
+- học bao nhiêu môn
+answer:
+Đã hoàn thành 17 môn
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: mon-iem-cao-nhat
+topic: Câu hỏi thường gặp
+questions:
+- môn điểm cao nhất
+answer:
+Đại số tuyến tính và Vi tích phân 2 đạt 10.0
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: mon-iem-thap-nhat
+topic: Câu hỏi thường gặp
+questions:
+- môn điểm thấp nhất
+answer:
+Cấu trúc dữ liệu và giải thuật đạt 5.40
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: van-phu-uc
+topic: Câu hỏi thường gặp
+questions:
+- Văn Phú Đức
+answer:
+là sinh viên trường đại học Khoa Học Tự Nhiên-DHQGHCM
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-ai-so-tuyen-tinh
+topic: Câu hỏi thường gặp
+questions:
+- điểm đại số tuyến tính
+answer:
+10.0
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vtp2
+topic: Câu hỏi thường gặp
+questions:
+- điểm vtp2
+answer:
+10.0
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vi-tich-phan-2
+topic: Câu hỏi thường gặp
+questions:
+- điểm vi tích phân 2
+answer:
+10
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-toan-roi-rac
+topic: Câu hỏi thường gặp
+questions:
+- điểm toán rời rạc
+answer:
+9.4
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vi-tich-phan-1
+topic: Câu hỏi thường gặp
+questions:
+- điểm vi tích phân 1
+answer:
+9.4
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vtp1
+topic: Câu hỏi thường gặp
+questions:
+- điểm vtp1
+answer:
+9.4
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-ky-nang-mem
+topic: Câu hỏi thường gặp
+questions:
+- điểm kỹ năng mềm
+answer:
+9.3
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-ki-nang-mem
+topic: Câu hỏi thường gặp
+questions:
+- điểm kĩ năng mềm
+answer:
+9.3
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vat-ly-ai-cuong-1
+topic: Câu hỏi thường gặp
+questions:
+- điểm vật lý đại cương 1
+answer:
+9.1
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-vat-li-ai-cuong-1
+topic: Câu hỏi thường gặp
+questions:
+- điểm vật lí đại cương 1
+answer:
+9.1
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-tu-duy-tinh-toan
+topic: Câu hỏi thường gặp
+questions:
+- điểm tư duy tính toán
+answer:
+9.1
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-phap-luat-ai-cuong
+topic: Câu hỏi thường gặp
+questions:
+- điểm pháp luật đại cương
+answer:
+8.6
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-co-so-lap-trinh
+topic: Câu hỏi thường gặp
+questions:
+- điểm cơ sở lập trình
+answer:
+8.5
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-he-thong-may-tinh
+topic: Câu hỏi thường gặp
+questions:
+- điểm hệ thống máy tính
+answer:
+7.8
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-nhap-mon-cong-nghe-thong-tin
+topic: Câu hỏi thường gặp
+questions:
+- điểm nhập môn công nghệ thông tin
+answer:
+7.5
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-toan-hoc-to-hop
+topic: Câu hỏi thường gặp
+questions:
+- điểm toán học tổ hợp
+answer:
+7.4
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-mang-may-tinh
+topic: Câu hỏi thường gặp
+questions:
+- điểm mạng máy tính
+answer:
+7.3
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-giao-duc-quoc-phong
+topic: Câu hỏi thường gặp
+questions:
+- điểm giáo dục quốc phòng
+answer:
+7.1
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-lap-trinh-huong-oi-tuong
+topic: Câu hỏi thường gặp
+questions:
+- điểm lập trình hướng đối tượng
+answer:
+7.5
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-kinh-te-ai-cuong
+topic: Câu hỏi thường gặp
+questions:
+- điểm kinh tế đại cương
+answer:
+5.9
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-cau-truc-du-lieu-va-giai-thuat
+topic: Câu hỏi thường gặp
+questions:
+- điểm cấu trúc dữ liệu và giải thuật
+answer:
+5.4
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: mon-manh-nhat
+topic: Câu hỏi thường gặp
+questions:
+- môn mạnh nhất
+answer:
+Các môn toán và tư duy logic
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: mon-can-cai-thien
+topic: Câu hỏi thường gặp
+questions:
+- môn cần cải thiện
+answer:
+Cấu trúc dữ liệu và giải thuật
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: the-manh-la-gi
+topic: Câu hỏi thường gặp
+questions:
+- thế mạnh là gì
+answer:
+Rất mạnh về toán, logic và tư duy tính toán
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: iem-yeu-la-gi
+topic: Câu hỏi thường gặp
+questions:
+- điểm yếu là gì
+answer:
+Cần cải thiện cấu trúc dữ liệu và giải thuật
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: ai-so-tuyen-tinh-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- đại số tuyến tính xét chuyên ngành không
+answer:
+Có
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: vi-tich-phan-2-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- vi tích phân 2 xét chuyên ngành không
+answer:
+Có
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: ky-nang-mem-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- kỹ năng mềm xét chuyên ngành không
+answer:
+Không
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: phap-luat-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- pháp luật xét chuyên ngành không
+answer:
+Không
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: kinh-te-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- kinh tế xét chuyên ngành không
+answer:
+Không
+=== END ===
+
+=== RECORD ===
+kind: qa
+id: giao-duc-quoc-phong-xet-chuyen-nganh-khong
+topic: Câu hỏi thường gặp
+questions:
+- giáo dục quốc phòng xét chuyên ngành không
+answer:
+Không
+=== END ===
+
+=== RECORD ===
+kind: doc
+id: bang-iem-hoc-tap-van-phu-uc-page-1
+topic: BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC (trang 0)
+content:
+ĐẠI HỌC QUỐC GIA TP.HỒ CHÍ MINH
+TRƯỜNG ĐẠI HỌC KHOA HỌC TỰ NHIÊN
+CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+Độc lập - Tự do - Hạnh phúc
+-------------------
+BẢNG ĐIỂM HỌC TẬP
+Họ và tên sinh viên: VĂN PHÚ ĐỨC Trình độ đào tạo: Đại học chính quy
+Trạng thái: Đang học Năm học: Tất cả
+STT Mã HP Tên học phần Số TC Thang 10 Thang 4 Điểm chữ
+1 CSC00004 Nhập môn Công nghệ Thông tin 4 7.5 3.25 B+
+2 CSC10012 Cơ sở lập trình 4 8.5 3.75 A.
+3 CSC10121 Kỹ năng mềm 3 9.3 4 A+
+4 MTH00009 Toán rời rạc 4 9.4 4 A+
+5 BAA00004 Pháp luật đại cương 3 8.6 3.8 A.
+6 CSC10004 Cấu trúc dữ liệu và giải thuật 4 5.4 2.2 C.
+7 MTH00058 Toán học tổ hợp 4 7.4 3.2 B+
+8 PHY00005 Vật lý đại cương 1 4 9.1 4 A+
+9 CSC10003 Phương pháp lập trình hướng đối tượng 4 6.9 2.95 B.
+10 CSC10009 Hệ thống máy tính 2 7.8 3.4 B+
+11 MTH00005 Vi tích phân 1 4 9.4 4 A+
+12 MTH00008 Đại số tuyến tính 4 10 4 A+
+13 BAA00005 Kinh tế đại cương 2 5.9 2.45 C.
+14 CSC10008 Mạng máy tính 4 7.3 3.15 B+
+15 CSC10014 Tư duy tính toán 4 9.1 4 A+
+16 MTH00006 Vi tích phân 2 4 10 4 A+
+17 BAA00101 Triết học Mác - Lênin 3 9 4 A+
+18 CSC10006 Cơ sở dữ liệu 4 9.8 4 A+
+19 CSC10007 Hệ điều hành 4 8.1 3.55 A.
+20 MTH00007 Xác suất thống kê 4 10 4 A+
+21 BAA00102 Kinh tế chính trị Mác - Lênin 2 8.9 3.95 A.
+22 CSC14003 Cơ sở trí tuệ nhân tạo 4 7.7 3.35 B+
+23 MTH00057 Toán ứng dụng và thống kê cho Công nghệ thông tin 4 9.3 4 A+
+24 PHY00007 Vật lý cho Công nghệ thông tin 4 8.8 3.9 A.
+Điểm trung bình tích lũy (thang 10): 8.514
+Điểm trung bình tích lũy (thang 4): 3.634
+Tổng số tín chỉ tích lũy: 87 tín chỉ
+Xếp loại học lực tích lũy: Giỏi
+07/11/2026, 13:22 BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC
+about:blank 1/2
+source: BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC.pdf#page=0
+=== END ===
+
+=== RECORD ===
+kind: doc
+id: bang-iem-hoc-tap-van-phu-uc-page-1-2
+topic: BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC (trang 1)
+content:
+TP. Hồ Chí Minh, Ngày 7 tháng 11 năm 2026
+NGƯỜI LẬP BẢNG ĐIỂM
+VĂN PHÚ ĐỨC
+(*): Bảng điểm này không thay thế bảng điểm chính thức từ Phòng đào tạo.
+07/11/2026, 13:22 BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC
+about:blank 2/2
+source: BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC.pdf#page=1
+=== END ===
+
+=== RECORD ===
+kind: doc
+id: cv-data-science-vietnamese
+topic: CV_Data_Science_Vietnamese
+content:
+[HỌ VÀ TÊN]
+
+TP. Hồ Chí Minh, Việt Nam  •  [Số điện thoại]  •  [Email]  •  [GitHub / LinkedIn]
+
+HỌC VẤN
+
+Trường Đại học Khoa học Tự nhiên, ĐHQG-HCM (HCMUS)
+
+Cử nhân Khoa học dữ liệu  |  TP. Hồ Chí Minh, Việt Nam
+
+GPA: 3.7/4.0  •  Dự kiến tốt nghiệp: tháng 10/2028
+
+DỰ ÁN CÁ NHÂN
+
+Vietnam Air Quality & Weather Analytics Platform – Nền tảng phân tích chất lượng không khí và thời tiết Việt Nam
+Python, Apache Airflow, PostgreSQL, dbt, Docker Compose, OpenAQ API, Open-Meteo API, Streamlit
+
+•  Xây dựng pipeline dữ liệu đầu-cuối để thu thập dữ liệu đo chất lượng không khí và quan sát thời tiết từ các API thực tế cho một số địa điểm tại Việt Nam, với khoảng thời gian truy vấn mặc định có thể cấu hình là 7 ngày.
+
+•  Tổ chức các bước trích xuất và kiểm tra dữ liệu chất lượng không khí/thời tiết nhằm phát hiện bản ghi thiếu hoặc không hợp lệ trước khi nạp dữ liệu.
+
+•  Sử dụng Apache Airflow để điều phối các tác vụ trích xuất, kiểm tra, lưu trữ, nạp vào data warehouse và chạy kiểm thử/chuyển đổi bằng dbt theo DAG có khai báo phụ thuộc.
+
+•  Lưu dữ liệu thô và dữ liệu phân tích trong PostgreSQL; phát triển các mô hình dbt cho bảng fact theo giờ và các bảng phân tích theo thành phố, bao gồm tổng hợp theo ngày và phân tích mối liên hệ giữa ô nhiễm với thời tiết.
+
+•  Đóng gói các dịch vụ bằng Docker Compose, gồm Airflow, PostgreSQL và dashboard Streamlit, hỗ trợ thiết lập môi trường phát triển cục bộ có tính nhất quán.
+
+•  Thực hành gỡ lỗi pipeline thông qua log task trong Airflow, truy vấn SQL, quy trình dbt run/test và kiểm tra trạng thái các dịch vụ.
+
+KỸ NĂNG KỸ THUẬT
+
+Lập trình & dữ liệu: Python, SQL, kiểm tra dữ liệu, thu thập dữ liệu qua API, xử lý batch
+
+Data Engineering: Apache Airflow, khái niệm ETL/ELT, PostgreSQL, mô hình hóa data warehouse, dbt
+
+Công cụ: Docker, Docker Compose, Git/GitHub, Linux, Streamlit
+
+Nguồn dữ liệu: OpenAQ API, Open-Meteo API
+
+KINH NGHIỆM HỌC ĐƯỢC TỪ DỰ ÁN
+
+•  Có kinh nghiệm thực hành kết nối API với pipeline phân tích được điều phối tự động, tách biệt lớp dữ liệu thô và lớp chuyển đổi trong warehouse, đồng thời kiểm thử và gỡ lỗi ứng dụng dữ liệu gồm nhiều dịch vụ.
+source: CV_Data_Science_Vietnamese.docx
+=== END ===
+
+=== RECORD ===
+kind: doc
+id: data
+topic: data
+content:
+THÔNG TIN CÁ NHÂN TÓM TẮT
+
+Họ và tên: Văn Phú Đức
+
+Trường:
+Đại học Khoa học Tự nhiên - ĐHQG TP.HCM (HCMUS)
+
+Chuyên ngành dự kiến:
+- Máy tính
+- Trí tuệ Nhân tạo (AI)
+- Kỹ thuật Phần mềm
+
+Mục tiêu dài hạn:
+- Săn học bổng Thạc sĩ tại Đức
+- Trường mục tiêu:
+  + TUHH
+
+Mục tiêu IELTS:
+- IELTS Academic 6.5 - 7.0
+- Dự kiến thi cuối 2027 hoặc đầu 2028
+
+Thời gian tốt nghiệp dự kiến:
+- Tháng 8/2028
+
+Tổng quan học tập:
+- Đã hoàn thành: 17 môn
+- Tổng tín chỉ tích lũy: 62 TC
+- GPA tổng: 8.30 / 10.0
+- GPA xét chuyên ngành: 8.31 / 10.0
+- Xếp loại: Giỏi
+
+Thế mạnh:
+- Toán học
+- Logic
+- Tư duy tính toán
+- Phân tích hệ thống
+
+Các môn nổi bật:
+- Đại số tuyến tính: 10.0
+- Vi tích phân 2: 10.0
+- Toán rời rạc: 9.4
+- Vi tích phân 1: 9.4
+- Tư duy tính toán: 9.1
+
+Điểm cần cải thiện:
+- Cấu trúc dữ liệu và giải thuật: 5.4
+
+Định hướng nghề nghiệp:
+- AI Engineer
+- Machine Learning
+- Computer Science Research
+
+Phong cách học tập:
+- Mạnh về tư duy lý thuyết
+- Khả năng toán học tốt
+- Hợp với AI và Computer Science
+- Có tiềm năng nghiên cứu
+source: data.txt
+=== END ===
+
+=== RECORD ===
+kind: doc
+id: data-2
+topic: data
+content:
+Unnamed: 0: nan | Unnamed: 1: BẢNG ĐIỂM TOÀN DIỆN HIỆN TẠI | Unnamed: 2: nan | Unnamed: 3: nan | Unnamed: 4: nan | Unnamed: 5: nan | Unnamed: 6: nan | Unnamed: 7: nan
+
+Unnamed: 0: nan | Unnamed: 1: Sinh viên: Kim Oanh | Tổng số: 17 môn đã tích lũy (62 Tín chỉ) | Unnamed: 2: nan | Unnamed: 3: nan | Unnamed: 4: nan | Unnamed: 5: nan | Unnamed: 6: nan | Unnamed: 7: nan
+
+Unnamed: 0: nan | Unnamed: 1: nan | Unnamed: 2: nan | Unnamed: 3: nan | Unnamed: 4: nan | Unnamed: 5: nan | Unnamed: 6: nan | Unnamed: 7: nan
+
+Unnamed: 0: nan | Unnamed: 1: STT | Unnamed: 2: Mã Môn Học | Unnamed: 3: Tên Môn Học | Unnamed: 4: Số TC | Unnamed: 5: Điểm Hệ 10 | Unnamed: 6: Điểm x TC | Unnamed: 7: Trạng Thái Xét Chuyên Ngành
+
+Unnamed: 0: nan | Unnamed: 1: 1 | Unnamed: 2: MTH00008 | Unnamed: 3: Đại số tuyến tính | Unnamed: 4: 4 | Unnamed: 5: 10 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 2 | Unnamed: 2: MTH00006 | Unnamed: 3: Vi tích phân 2 | Unnamed: 4: 4 | Unnamed: 5: 10 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 3 | Unnamed: 2: MTH00009 | Unnamed: 3: Toán rời rạc | Unnamed: 4: 4 | Unnamed: 5: 9.4 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 4 | Unnamed: 2: MTH00005 | Unnamed: 3: Vi tích phân 1 | Unnamed: 4: 4 | Unnamed: 5: 9.4 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 5 | Unnamed: 2: CSC10121 | Unnamed: 3: Kỹ năng mềm | Unnamed: 4: 3 | Unnamed: 5: 9.3 | Unnamed: 6: nan | Unnamed: 7: Loại bỏ (Theo yêu cầu)
+
+Unnamed: 0: nan | Unnamed: 1: 6 | Unnamed: 2: PHY00005 | Unnamed: 3: Vật lý đại cương 1 | Unnamed: 4: 4 | Unnamed: 5: 9.1 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 7 | Unnamed: 2: CSC10144 | Unnamed: 3: Tư duy tính toán | Unnamed: 4: 4 | Unnamed: 5: 9.1 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 8 | Unnamed: 2: BAA00004 | Unnamed: 3: Pháp luật đại cương | Unnamed: 4: 3 | Unnamed: 5: 8.6 | Unnamed: 6: nan | Unnamed: 7: Loại bỏ (Theo yêu cầu)
+
+Unnamed: 0: nan | Unnamed: 1: 9 | Unnamed: 2: CSC10112 | Unnamed: 3: Cơ sở lập trình | Unnamed: 4: 4 | Unnamed: 5: 8.5 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 10 | Unnamed: 2: CSC10009 | Unnamed: 3: Hệ thống máy tính | Unnamed: 4: 2 | Unnamed: 5: 7.8 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 11 | Unnamed: 2: CSC00004 | Unnamed: 3: Nhập môn Công nghệ Thông tin | Unnamed: 4: 4 | Unnamed: 5: 7.5 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 12 | Unnamed: 2: MTH00058 | Unnamed: 3: Toán học tổ hợp | Unnamed: 4: 4 | Unnamed: 5: 7.4 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 13 | Unnamed: 2: CSC10008 | Unnamed: 3: Mạng máy tính | Unnamed: 4: 4 | Unnamed: 5: 7.3 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 14 | Unnamed: 2: BAA00030 | Unnamed: 3: Giáo dục quốc phòng - An ninh | Unnamed: 4: 4 | Unnamed: 5: 7.1 | Unnamed: 6: nan | Unnamed: 7: Loại bỏ (Không tính tích lũy tổng)
+
+Unnamed: 0: nan | Unnamed: 1: 15 | Unnamed: 2: CSC10003 | Unnamed: 3: Phương pháp lập trình hướng đối tượng | Unnamed: 4: 4 | Unnamed: 5: 6.9 | Unnamed: 6: nan | Unnamed: 7: Tính điểm
+
+Unnamed: 0: nan | Unnamed: 1: 16 | Unnamed: 2: BAA00005 | Unnamed: 3: Kinh tế đại cương | Unnamed: 4: 2 | Unnamed: 5: 5.9 | Unnamed: 6: nan | Unnamed: 7: Loại bỏ (Theo yêu cầu)
+
+Unnamed: 0: nan | Unnamed: 1: 17 | Unnamed: 2: CSC10004 | Unnamed: 3: Cấu trúc dữ liệu và giải thuật | Unnamed: 4: 4 | Unnamed: 5: 5.4 | Unnamed: 6: nan | Unnamed: 7: Tính điểm (Điểm trũng cần cải thiện)
+
+Unnamed: 0: nan | Unnamed: 1: Tổng cộng Tích Lũy (Trừ GDQP): | Unnamed: 2: nan | Unnamed: 3: nan | Unnamed: 4: nan | Unnamed: 5: nan | Unnamed: 6: nan | Unnamed: 7: nan
+
+Unnamed: 0: nan | Unnamed: 1: ĐIỂM TRUNG BÌNH TÍCH LŨY TOÀN KHÓA HIỆN TẠI (GPA TỔNG): | Unnamed: 2: nan | Unnamed: 3: nan | Unnamed: 4: nan | Unnamed: 5: nan | Unnamed: 6: nan | Unnamed: 7: nan
+source: data.xlsx
+=== END ===

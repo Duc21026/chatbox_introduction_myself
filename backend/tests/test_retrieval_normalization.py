@@ -77,7 +77,7 @@ def test_qa_keys_and_questions_share_normalization(monkeypatch, tmp_path):
     qa_path = tmp_path / "qa.txt"
     qa_path.write_text("GPA   hiện tại?|8.30\n", encoding="utf-8")
     monkeypatch.setattr(chatbox, "_qa_data", None)
-    _config(monkeypatch, qa_path=str(qa_path), query_rewrite="off")
+    _config(monkeypatch, qa_path=str(qa_path), query_rewrite="off", legacy_sources=True)
     monkeypatch.setattr(
         chatbox,
         "get_db",
@@ -234,7 +234,7 @@ def test_add_ask_replace_delete_lifecycle(tmp_path, monkeypatch):
     input_dir = tmp_path / "in"
     input_dir.mkdir()
 
-    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off")
+    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off", legacy_sources=True)
     monkeypatch.setattr(chatbox, "_db", None)
     monkeypatch.setattr(chatbox, "_index_signature", None)
     monkeypatch.setattr(chatbox, "_qa_data", None)
@@ -284,7 +284,7 @@ def test_noisy_variants_retrieve_the_same_content(tmp_path, monkeypatch):
     input_dir = tmp_path / "in"
     input_dir.mkdir()
 
-    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off")
+    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off", legacy_sources=True)
     monkeypatch.setattr(chatbox, "_db", None)
     monkeypatch.setattr(chatbox, "_index_signature", None)
     monkeypatch.setattr(chatbox, "_qa_data", None)
@@ -315,7 +315,7 @@ def test_text_pdf_can_be_imported_and_retrieved(tmp_path, monkeypatch):
     knowledge_base = tmp_path / "kb"
     knowledge_base.mkdir()
 
-    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off")
+    _config(monkeypatch, data_dir=str(knowledge_base), query_rewrite="off", legacy_sources=True)
     monkeypatch.setattr(chatbox, "_db", None)
     monkeypatch.setattr(chatbox, "_index_signature", None)
     monkeypatch.setattr(chatbox, "_qa_data", None)

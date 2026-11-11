@@ -1,4 +1,6 @@
+import hashlib
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -15,11 +17,15 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from rapidfuzz import fuzz, process
 
 try:
+    from . import source_format
     from .documents import extract_segments, is_supported_source
-    from .text_normalization import normalize_text
+    from .text_normalization import NORMALIZER_VERSION, normalize_text
 except ImportError:  # direct execution from backend/
+    import source_format
     from documents import extract_segments, is_supported_source
-    from text_normalization import normalize_text
+    from text_normalization import NORMALIZER_VERSION, normalize_text
+
+logger = logging.getLogger(__name__)
 
 REFUSAL = "Tôi không biết"
 REPHRASE = "Bạn vui lòng nhập lại câu hỏi rõ ràng hơn."
@@ -27,6 +33,8 @@ REPHRASE = "Bạn vui lòng nhập lại câu hỏi rõ ràng hơn."
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_DATA_DIR = os.path.join(BACKEND_DIR, "data")
 DEFAULT_QA_PATH = os.path.join(BACKEND_DIR, "qa.txt")
+DEFAULT_KB_PATH = os.path.join(BACKEND_DIR, "kb.json")
+DEFAULT_SOURCE_PATH = os.path.join(BACKEND_DIR, "data", "chatbot.txt")
 
 
 def _env_float(name, default):
@@ -54,6 +62,9 @@ class Config:
     chunk_overlap: int
     top_k: int
     query_rewrite: str
+    source_path: str = DEFAULT_SOURCE_PATH
+    kb_path: str = DEFAULT_KB_PATH
+    legacy_sources: bool = False
 
 
 def load_config():
@@ -76,6 +87,10 @@ def load_config():
             "CHATBOT_QUERY_REWRITE phải là một trong: auto, always, off"
         )
 
+    legacy_sources = os.environ.get(
+        "CHATBOT_LEGACY_SOURCES", "false"
+    ).strip().lower() in {"1", "true", "yes", "on"}
+
     return Config(
         answer_model=answer_model,
         embedding_model=os.environ.get("CHATBOT_EMBEDDING_MODEL", "bge-m3").strip(),
@@ -90,6 +105,9 @@ def load_config():
         chunk_overlap=int(_env_float("CHATBOT_CHUNK_OVERLAP", 50)),
         top_k=top_k,
         query_rewrite=query_rewrite,
+        source_path=os.environ.get("CHATBOT_SOURCE_PATH", DEFAULT_SOURCE_PATH),
+        kb_path=os.environ.get("CHATBOT_KB_PATH", DEFAULT_KB_PATH),
+        legacy_sources=legacy_sources,
     )
 
 
@@ -98,8 +116,12 @@ config = load_config()
 _db = None
 _llm = None
 _qa_data = None
+_qa_data_signature = None
 _index_embedding_model = None
 _index_signature = None
+_source_cache = None
+_source_cache_key = None
+_legacy_cache = None
 
 
 class NormalizedEmbeddings(Embeddings):
@@ -144,26 +166,59 @@ class RetrievalDiagnostic:
 
 
 def validate_paths():
-    if not os.path.isdir(config.data_dir):
+    if config.legacy_sources:
+        if not os.path.isdir(config.data_dir):
+            raise RuntimeError(
+                f"Không tìm thấy thư mục dữ liệu: {config.data_dir}. "
+                "Hãy kiểm tra CHATBOT_DATA_DIR."
+            )
+        if not os.path.isfile(config.qa_path):
+            raise RuntimeError(
+                f"Không tìm thấy tệp câu hỏi đáp: {config.qa_path}. "
+                "Hãy kiểm tra CHATBOT_QA_PATH."
+            )
+        return
+
+    if not os.path.isfile(config.source_path):
         raise RuntimeError(
-            f"Không tìm thấy thư mục dữ liệu: {config.data_dir}. "
-            "Hãy kiểm tra CHATBOT_DATA_DIR."
-        )
-    if not os.path.isfile(config.qa_path):
-        raise RuntimeError(
-            f"Không tìm thấy tệp câu hỏi đáp: {config.qa_path}. "
-            "Hãy kiểm tra CHATBOT_QA_PATH."
+            f"Không tìm thấy tệp nguồn: {config.source_path}. "
+            "Hãy kiểm tra CHATBOT_SOURCE_PATH."
         )
 
 
-def _load_documents(data_dir=None):
-    directory = data_dir or config.data_dir
+def _legacy_source_key():
+    entries = []
+    directory = config.data_dir
+    if os.path.isdir(directory):
+        for filename in sorted(os.listdir(directory)):
+            if not is_supported_source(filename):
+                continue
+            path = os.path.join(directory, filename)
+            if not os.path.isfile(path):
+                continue
+            status = os.stat(path)
+            entries.append([filename, status.st_mtime_ns, status.st_size])
+    extra = []
+    for path in (config.qa_path, config.kb_path):
+        if os.path.isfile(path):
+            status = os.stat(path)
+            extra.append([path, status.st_mtime_ns, status.st_size])
+        else:
+            extra.append([path, None, None])
+    return json.dumps(
+        {"files": entries, "extra": extra}, ensure_ascii=False, sort_keys=True
+    )
+
+
+def _load_legacy_documents():
+    directory = config.data_dir
     documents = []
+    target = os.path.abspath(config.source_path)
     for filename in sorted(os.listdir(directory)):
         if not is_supported_source(filename):
             continue
         path = os.path.join(directory, filename)
-        if not os.path.isfile(path):
+        if not os.path.isfile(path) or os.path.abspath(path) == target:
             continue
         try:
             segments = extract_segments(path)
@@ -179,31 +234,13 @@ def _load_documents(data_dir=None):
             page = segment.get("page")
             if page is not None:
                 metadata["page"] = page
-            documents.append(Document(page_content=text, metadata=metadata))
+            documents.append(
+                source_format.RAGDocument(page_content=text, metadata=metadata)
+            )
     return documents
 
 
-def _source_signature(data_dir=None):
-    directory = data_dir or config.data_dir
-    entries = []
-    for filename in sorted(os.listdir(directory)):
-        if not is_supported_source(filename):
-            continue
-        path = os.path.join(directory, filename)
-        if not os.path.isfile(path):
-            continue
-        status = os.stat(path)
-        entries.append([filename, status.st_mtime_ns, status.st_size])
-    payload = {
-        "files": entries,
-        "embedding_model": config.embedding_model,
-        "chunk_size": config.chunk_size,
-        "chunk_overlap": config.chunk_overlap,
-    }
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
-
-
-def _load_qa_data():
+def _load_legacy_qa_data():
     qa_data = {}
     with open(config.qa_path, encoding="utf-8") as handle:
         for line in handle:
@@ -218,22 +255,192 @@ def _load_qa_data():
     return qa_data
 
 
+def _load_legacy_kb_items():
+    path = config.kb_path
+    if not os.path.isfile(path):
+        return []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            raw = json.load(handle)
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"Không đọc được KB cũ {path}: {exc}") from exc
+    if not isinstance(raw, list):
+        raise RuntimeError("KB cũ phải là một JSON array.")
+    items = []
+    seen = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        item_id = item.get("id")
+        topic = item.get("topic")
+        questions = item.get("questions")
+        if (
+            not isinstance(item_id, str)
+            or not item_id
+            or item_id in seen
+            or not isinstance(topic, str)
+            or not topic
+            or not isinstance(questions, list)
+            or not questions
+        ):
+            continue
+        bullets = item.get("answer_bullets")
+        answer = item.get("answer")
+        if not answer and not bullets:
+            continue
+        seen.add(item_id)
+        items.append(
+            source_format.KBItem(
+                id=item_id,
+                topic=topic,
+                questions=[q for q in questions if isinstance(q, str) and q.strip()],
+                answer=answer if isinstance(answer, str) else None,
+                answer_bullets=[b for b in bullets if isinstance(b, str)]
+                if isinstance(bullets, list)
+                else None,
+            )
+        )
+    return items
+
+
+def _build_legacy_source():
+    global _legacy_cache
+    logger.warning(
+        "CHATBOT_LEGACY_SOURCES đang bật: dùng qa.txt/kb.json/data/. "
+        "Cấu hình này đã deprecated; hãy chuyển sang chatbot.txt."
+    )
+    key = _legacy_source_key()
+    if _legacy_cache is not None and _legacy_cache[0] == key:
+        return _legacy_cache[1]
+
+    qa_data = _load_legacy_qa_data()
+    kb_items = _load_legacy_kb_items()
+    qa_pairs = []
+    for index, (question, answer) in enumerate(qa_data.items()):
+        qa_pairs.append(
+            source_format.QAPair(
+                question=question,
+                normalized_question=question,
+                answer=answer,
+                record_id=f"legacy-{index}",
+            )
+        )
+    rag_documents = _load_legacy_documents()
+
+    kb_payload = [item.as_dict() for item in kb_items]
+    kb_hash = hashlib.sha256(
+        json.dumps(kb_payload, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    content_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    source_file = source_format.SourceFile(
+        path="legacy",
+        version="0",
+        encoding="utf-8",
+        text="",
+        size_bytes=0,
+        content_hash=content_hash,
+        mtime_ns=0,
+        records=[],
+        warnings=[],
+    )
+    derived = source_format.DerivedSource(
+        source_file=source_file,
+        qa_pairs=qa_pairs,
+        kb_items=kb_items,
+        rag_documents=rag_documents,
+        kb_hash=kb_hash,
+        signature=source_format.SourceSignature(
+            path="legacy",
+            mtime_ns=0,
+            size_bytes=0,
+            content_hash=content_hash,
+            embedding_model=config.embedding_model,
+            chunk_size=config.chunk_size,
+            chunk_overlap=config.chunk_overlap,
+            normalizer_version=NORMALIZER_VERSION,
+        ),
+    )
+    _legacy_cache = (key, derived)
+    return derived
+
+
+def _source_key(path):
+    try:
+        status = os.stat(path)
+    except OSError:
+        return None
+    return (status.st_mtime_ns, status.st_size)
+
+
+def get_source(force=False):
+    """Return the cached ``DerivedSource``; keep the old index on bad edits."""
+
+    global _source_cache, _source_cache_key
+
+    if config.legacy_sources:
+        return _build_legacy_source()
+
+    key = _source_key(config.source_path)
+    if _source_cache is not None and _source_cache_key == key and not force:
+        return _source_cache
+
+    try:
+        derived = source_format.load_source(
+            config.source_path,
+            embedding_model=config.embedding_model,
+            chunk_size=config.chunk_size,
+            chunk_overlap=config.chunk_overlap,
+        )
+    except Exception as exc:
+        if _source_cache is not None:
+            logger.error(
+                "Tệp nguồn mới không hợp lệ; giữ chỉ mục cũ: %s", exc
+            )
+            return _source_cache
+        raise
+
+    _source_cache = derived
+    _source_cache_key = key
+    return derived
+
+
+def _load_documents():
+    return [
+        Document(page_content=document.page_content, metadata=dict(document.metadata))
+        for document in get_source().rag_documents
+    ]
+
+
+def _source_signature():
+    return get_source().signature
+
+
 def get_qa_data():
-    global _qa_data
-    if _qa_data is None:
-        _qa_data = _load_qa_data()
+    global _qa_data, _qa_data_signature
+    source = get_source()
+    if _qa_data is None or _qa_data_signature != source.signature:
+        _qa_data = {
+            pair.normalized_question: pair.answer
+            for pair in source.qa_pairs
+            if pair.normalized_question
+        }
+        _qa_data_signature = source.signature
     return _qa_data
 
 
 def get_db():
     global _db, _index_embedding_model, _index_signature
     validate_paths()
-    signature = _source_signature()
+    source = get_source()
+    signature = source.signature
 
     if _db is not None and signature == _index_signature:
         return _db
 
-    documents = _load_documents()
+    documents = [
+        Document(page_content=document.page_content, metadata=dict(document.metadata))
+        for document in source.rag_documents
+    ]
     if not documents:
         _db = None
         _index_embedding_model = config.embedding_model
@@ -248,10 +455,10 @@ def get_db():
     chunks = splitter.split_documents(documents)
     counters = {}
     for chunk in chunks:
-        source = chunk.metadata.get("source", "")
-        chunk_index = counters.get(source, 0)
+        source_name = chunk.metadata.get("source", "")
+        chunk_index = counters.get(source_name, 0)
         chunk.metadata["chunk_index"] = chunk_index
-        counters[source] = chunk_index + 1
+        counters[source_name] = chunk_index + 1
 
     embeddings = NormalizedEmbeddings(
         OllamaEmbeddings(

@@ -12,5 +12,9 @@ python-docx
 docx2txt
 RapidFuzz
 flask-cors
+flask-limiter
+cachetools
+
+numpy
 
 pytest

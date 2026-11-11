@@ -1,0 +1,179 @@
+[
+  {
+    "id": "intro",
+    "topic": "Giới thiệu bản thân",
+    "questions": [
+      "Bạn là ai?",
+      "Giới thiệu về bản thân đi",
+      "Cho mình biết về bạn với",
+      "Bạn tên gì?",
+      "Bạn đang học ở đâu?"
+    ],
+    "answer": "Mình là Văn Phú Đức, sinh viên Đại học Khoa học Tự nhiên – ĐHQG TP.HCM, chuyên ngành Khoa học Máy tính.",
+    "answer_bullets": null
+  },
+  {
+    "id": "gpa",
+    "topic": "Học tập & Điểm số",
+    "questions": [
+      "GPA của bạn là bao nhiêu?",
+      "Điểm trung bình của bạn?",
+      "Kết quả học tập của bạn?",
+      "Điểm tích lũy của bạn?",
+      "Bạn học giỏi không?"
+    ],
+    "answer": "GPA hiện tại là 8.30 / 10 với 62 tín chỉ tích lũy, hoàn thành 17 môn học.",
+    "answer_bullets": null
+  },
+  {
+    "id": "best-subjects",
+    "topic": "Học tập & Điểm số",
+    "questions": [
+      "Môn nào bạn điểm cao nhất?",
+      "Bạn giỏi môn gì?",
+      "Môn học xuất sắc nhất của bạn?",
+      "Điểm 10 môn nào?"
+    ],
+    "answer": "Đạt 10.0 ở Đại số tuyến tính và Vi tích phân 2. Điểm cao khác: Toán rời rạc 9.4, Vi tích phân 1 9.4, Kỹ năng mềm 9.3.",
+    "answer_bullets": null
+  },
+  {
+    "id": "skills",
+    "topic": "Kỹ năng lập trình",
+    "questions": [
+      "Bạn biết những ngôn ngữ lập trình nào?",
+      "Tech stack của bạn là gì?",
+      "Kỹ năng kỹ thuật của bạn?",
+      "Bạn dùng công nghệ gì?",
+      "Bạn có kỹ năng gì?"
+    ],
+    "answer": null,
+    "answer_bullets": [
+      "Ngôn ngữ: Python, JavaScript / TypeScript",
+      "Backend: Flask, FastAPI",
+      "Frontend: React, Vite",
+      "AI/ML: LangChain, FAISS, Ollama",
+      "Database: SQL, PostgreSQL",
+      "Tools: Git, Docker, Linux"
+    ]
+  },
+  {
+    "id": "projects",
+    "topic": "Dự án",
+    "questions": [
+      "Bạn đã làm những dự án nào?",
+      "Dự án nổi bật của bạn?",
+      "Portfolio của bạn?",
+      "Bạn đã build gì?",
+      "Dự án cá nhân của bạn là gì?"
+    ],
+    "answer": null,
+    "answer_bullets": [
+      "Chatbot giới thiệu bản thân (Flask + LangChain + FAISS + Ollama)",
+      "Giao diện React SPA với streaming response và dark/light mode",
+      "Pipeline RAG tiếng Việt với bge-m3 embedding và Qwen2.5",
+      "Hệ thống đánh giá chatbot tự động với bộ câu hỏi tiếng Việt"
+    ]
+  },
+  {
+    "id": "contact",
+    "topic": "Liên hệ",
+    "questions": [
+      "Liên hệ bạn thế nào?",
+      "Email của bạn là gì?",
+      "GitHub của bạn?",
+      "Mình có thể tìm bạn ở đâu?",
+      "Thông tin liên lạc?"
+    ],
+    "answer": null,
+    "answer_bullets": [
+      "GitHub: github.com/vanphuduc (ví dụ)",
+      "Email: vanphuduc@example.com (ví dụ)",
+      "LinkedIn: linkedin.com/in/vanphuduc (ví dụ)"
+    ]
+  },
+  {
+    "id": "university",
+    "topic": "Giới thiệu bản thân",
+    "questions": [
+      "Bạn học trường nào?",
+      "Bạn đang học năm mấy?",
+      "Chuyên ngành của bạn là gì?",
+      "Bạn học ngành gì?"
+    ],
+    "answer": "Sinh viên Đại học Khoa học Tự nhiên – ĐHQG TP.HCM, ngành Khoa học Máy tính (Khoa Công nghệ Thông tin).",
+    "answer_bullets": null
+  },
+  {
+    "id": "ai-interests",
+    "topic": "Kỹ năng lập trình",
+    "questions": [
+      "Bạn thích lĩnh vực nào trong CNTT?",
+      "Định hướng nghề nghiệp của bạn?",
+      "Bạn quan tâm đến AI không?",
+      "Bạn muốn làm gì sau khi ra trường?"
+    ],
+    "answer": null,
+    "answer_bullets": [
+      "Trí tuệ nhân tạo và Học máy (AI/ML)",
+      "Xử lý ngôn ngữ tự nhiên tiếng Việt (NLP)",
+      "Xây dựng hệ thống RAG và chatbot thông minh",
+      "Backend engineering với Python"
+    ]
+  },
+  {
+    "id": "strengths",
+    "topic": "Học tập & Điểm số",
+    "questions": [
+      "Thế mạnh học tập của bạn là gì?",
+      "Bạn giỏi lĩnh vực nào?",
+      "Điểm mạnh của bạn là gì?",
+      "Bạn nổi bật ở điểm nào?"
+    ],
+    "answer": "Rất mạnh về toán học, tư duy logic và tính toán. Đạt điểm cao ở các môn Đại số, Giải tích, Toán rời rạc.",
+    "answer_bullets": null
+  },
+  {
+    "id": "weakness",
+    "topic": "Học tập & Điểm số",
+    "questions": [
+      "Điểm yếu của bạn là gì?",
+      "Bạn đang cải thiện gì?",
+      "Môn nào bạn cần cải thiện?",
+      "Bạn còn hạn chế gì?"
+    ],
+    "answer": "Cần cải thiện Cấu trúc dữ liệu và giải thuật (đạt 5.4). Đây là mục tiêu rèn luyện trong thời gian tới.",
+    "answer_bullets": null
+  },
+  {
+    "id": "greeting",
+    "topic": "Giới thiệu bản thân",
+    "questions": [
+      "Xin chào",
+      "Hello",
+      "Hi bạn",
+      "Chào bạn",
+      "Bạn có thể giúp mình không?"
+    ],
+    "answer": "Xin chào! Mình là chatbot giới thiệu bản thân của Văn Phú Đức. Bạn muốn biết gì về mình nào?",
+    "answer_bullets": null
+  },
+  {
+    "id": "chatbot-tech",
+    "topic": "Dự án",
+    "questions": [
+      "Chatbot này được xây dựng như thế nào?",
+      "Công nghệ đằng sau chatbot này là gì?",
+      "Bạn dùng gì để làm chatbot này?",
+      "Tech stack của chatbot?"
+    ],
+    "answer": null,
+    "answer_bullets": [
+      "Backend: Python Flask + LangChain + FAISS",
+      "LLM: Qwen2.5 chạy cục bộ qua Ollama",
+      "Embedding: bge-m3 (đa ngôn ngữ, mạnh tiếng Việt)",
+      "Frontend: React + TypeScript + Vite",
+      "KB Engine: hybrid cosine + fuzzy scoring"
+    ]
+  }
+]

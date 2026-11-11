@@ -1,0 +1,75 @@
+CHATBOT-SOURCE v1
+
+# ---------------------------------------------------------------------------
+# Mẫu tệp tri thức hợp nhất cho chatbot.
+# Sao chép nội dung này sang backend/data/chatbot.txt rồi sửa dữ liệu.
+#
+# kind: qa  -> dùng cho KB Engine + khớp mờ + RAG
+# kind: doc -> chỉ dùng cho RAG
+#
+# Trường bắt buộc của qa: kind, id, topic, questions, answer (hoặc bullets)
+# Trường bắt buộc của doc: kind, id, topic, content
+# ---------------------------------------------------------------------------
+
+# ---------------------------- Q&A soạn sẵn --------------------------------
+=== RECORD ===
+kind: qa
+id: gpa
+topic: Học tập & Điểm số
+questions:
+- GPA của bạn là bao nhiêu?
+- Điểm trung bình của bạn?
+- Kết quả học tập của bạn?
+answer:
+GPA hiện tại là trên 8.5 / 10 
+bullets:
+- GPA 8.30/10
+- 62 tín chỉ tích lũy
+- Hoàn thành 17 môn
+content:
+GPA hiện tại của Văn Phú Đức là  trên 8.5.
+source: BẢNG ĐIỂM HỌC TẬP - VĂN PHÚ ĐỨC.pdf#page=1
+=== END ===
+
+# ----------------------- Q&A không có content ------------------------------
+=== RECORD ===
+kind: qa
+id: contact
+topic: Liên hệ
+questions:
+- Làm sao để liên hệ với bạn?
+- Email của bạn là gì?
+answer:
+email: minhvan9602@gmail.com
+=== END ===
+
+# ------------------------------ Tài liệu RAG -------------------------------
+=== RECORD ===
+kind: doc
+id: study-plan
+topic: Kế hoạch học tập
+content:
+Mục tiêu dài hạn của Văn Phú Đức là săn học bổng Thạc sĩ tại Đức.
+Trường mục tiêu gồm TUHH. Mục tiêu IELTS Academic 6.5 - 7.0, dự kiến thi
+cuối 2027 hoặc đầu 2028.
+
+Các chuyên ngành dự kiến:
+- Máy tính
+- Trí tuệ Nhân tạo (AI)
+- Kĩ sư dữ liệu 
+source: data.txt
+=== END ===
+
+# --------------------------- Cách thoát ký tự ------------------------------
+# Dòng nội dung bắt đầu bằng nhãn ở cột 0 phải thêm dấu \ ở đầu.
+=== RECORD ===
+kind: doc
+id: escaping-demo
+topic: Ví dụ thoát ký tự
+content:
+\=== END ===
+\# đây là nội dung, không phải chú thích
+\id: đây là nội dung, không phải trường id
+\\ đây là một dấu gạch chéo ngược ở đầu dòng
+source: template.txt
+=== END ===

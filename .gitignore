@@ -37,20 +37,27 @@ pip-wheel-metadata/
 !**/.env.example
 
 # Local data, logs, archives, and partial writes
-data/
-backend/data/
+/data/
+backend/data/*
+!backend/data/chatbot.txt
 *.log
 *.tmp
 *.part
 qa copy.txt
 
+# KB Engine generated cache
+backend/embeddings_cache.npz
+
 # Spec Kit / tooling state
 .specify/
 .opencode/
+.kiro
 
 # Editors and OS files
 .vscode/
 .idea/
-.DS_Store
-Thumbs.db
-*.swp
+    .DS_Store
+    Thumbs.db
+    *.swp
+    
+Spec/template.txt

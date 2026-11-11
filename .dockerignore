@@ -1,0 +1,45 @@
+# ── .dockerignore ─────────────────────────────────────────────────────────────
+# Keeps the Docker build context small and avoids leaking secrets.
+
+# Git / tooling
+.git
+.gitignore
+.vscode
+.kiro
+.opencode
+.specify
+.sixth
+
+# Python artefacts
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+*/.pytest_cache
+backend/.venv
+venv
+
+# Node artefacts
+frontend/node_modules
+frontend/.vite
+
+# Secrets (never copy the real .env into the image)
+backend/.env
+frontend/.env
+
+# Docs / specs (not needed at runtime)
+README.md
+backend/README.md
+specs/
+library/
+
+# Test / evaluation data
+backend/tests/
+backend/evaluation/results/
+
+# Misc
+*.log
+*.tmp
+docker-compose*.yml
