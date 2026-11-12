@@ -5,6 +5,8 @@ import remarkGfm from "remark-gfm";
 
 import { useChatStore, type Message as ChatMessage } from "../../store/chatStore";
 import { CodeBlock } from "./CodeBlock";
+import { SuggestionList } from "./SuggestionList";
+import { TopicList } from "./TopicList";
 
 function textFromChildren(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") {
@@ -50,8 +52,28 @@ interface MessageProps {
   message: ChatMessage;
 }
 
+function sourceLabel(source: NonNullable<ChatMessage["sources"]>[number]): string {
+  if (source.page != null) {
+    return `${source.file}, trang ${source.page}`;
+  }
+  if (source.sheet != null) {
+    if (source.row_start != null) {
+      const end = source.row_end ?? source.row_start;
+      return `${source.file}, sheet ${source.sheet}, dòng ${source.row_start}–${end}`;
+    }
+    return `${source.file}, sheet ${source.sheet}`;
+  }
+  if (source.heading) {
+    return `${source.file}, ${source.heading}`;
+  }
+  return source.file;
+}
+
 export function Message({ message }: MessageProps) {
   const retryMessage = useChatStore((state) => state.retryMessage);
+  const sendMessage = useChatStore((state) => state.sendMessage);
+  const sendAction = useChatStore((state) => state.sendAction);
+  const isStreaming = useChatStore((state) => state.isStreaming);
 
   if (message.role === "user") {
     return (
@@ -84,6 +106,68 @@ export function Message({ message }: MessageProps) {
             )}
           </>
         )}
+
+        {message.responseType === "suggest" && (
+          <SuggestionList
+            suggestions={message.suggestions ?? []}
+            onSelect={(question) => void sendMessage(question)}
+            disabled={isStreaming}
+          />
+        )}
+
+        {message.responseType === "clarify" && (
+          <>
+            <TopicList
+              topics={message.topics ?? []}
+              onSelect={(topic) =>
+                void sendAction("topic", { topic, label: topic })
+              }
+              disabled={isStreaming}
+            />
+            {(message.examples ?? []).length > 0 && (
+              <ul className="example-list" aria-label="Câu hỏi mẫu">
+                {(message.examples ?? []).map((example) => (
+                  <li key={example}>{example}</li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+
+        {(message.actions ?? []).length > 0 && (
+          <div className="message-actions">
+            {(message.actions ?? []).map((action) => (
+              <button
+                key={action.id}
+                type="button"
+                className="action-button"
+                disabled={isStreaming}
+                onClick={() =>
+                  void sendAction(action.id, {
+                    topic: action.topic,
+                    label: action.label,
+                  })
+                }
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {message.responseType === "answer" && (message.sources ?? []).length > 0 && (
+          <ul className="source-list" aria-label="Nguồn tài liệu">
+            {(message.sources ?? []).map((source, index) => (
+              <li key={`${source.file}-${index}`}>{sourceLabel(source)}</li>
+            ))}
+          </ul>
+        )}
+
+        {message.responseType === "answer" &&
+          (message.sources ?? []).length === 0 &&
+          message.source && (
+            <p className="source-list">Nguồn: {message.source}</p>
+          )}
       </div>
 
       {message.status === "stopped" && (

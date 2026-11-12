@@ -1,3 +1,5 @@
+import csv
+import hashlib
 import json
 import os
 import unicodedata
@@ -96,3 +98,98 @@ class RecordingLLM:
 class ExplodingDB:
     def similarity_search_with_score(self, query, k=2):
         raise AssertionError("Không được gọi tìm kiếm khi không cần thiết")
+
+
+class FakeEmbedder:
+    """Deterministic embedder used by document/index tests (no Ollama)."""
+
+    def __init__(self, dimension=8):
+        self.dimension = dimension
+
+    def _vector(self, text):
+        digest = hashlib.sha256(str(text).encode("utf-8")).digest()
+        values = []
+        for index in range(self.dimension):
+            byte = digest[index % len(digest)]
+            values.append((byte / 127.5) - 1.0)
+        return values
+
+    def embed_documents(self, texts):
+        return [self._vector(text) for text in texts]
+
+    def embed_query(self, text):
+        return self._vector(text)
+
+
+def write_pdf(path, pages):
+    from pypdf import PdfWriter
+    from pypdf.generic import (
+        DecodedStreamObject,
+        DictionaryObject,
+        NameObject,
+    )
+
+    writer = PdfWriter()
+    for text in pages:
+        page = writer.add_blank_page(width=300, height=300)
+        safe = str(text).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+        stream = DecodedStreamObject()
+        stream.set_data(f"BT /F1 10 Tf 20 250 Td ({safe}) Tj ET".encode("latin-1", "replace"))
+        page[NameObject("/Contents")] = writer._add_object(stream)
+        font = DictionaryObject(
+            {
+                NameObject("/Type"): NameObject("/Font"),
+                NameObject("/Subtype"): NameObject("/Type1"),
+                NameObject("/BaseFont"): NameObject("/Helvetica"),
+            }
+        )
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {NameObject("/F1"): writer._add_object(font)}
+                )
+            }
+        )
+    with open(path, "wb") as handle:
+        writer.write(handle)
+    return path
+
+
+def write_docx(path, paragraphs, table=None):
+    from docx import Document
+
+    document = Document()
+    for item in paragraphs:
+        if isinstance(item, tuple) and item[0] == "heading":
+            document.add_heading(item[1], level=1)
+        else:
+            document.add_paragraph(str(item))
+    if table:
+        rows = list(table)
+        if rows:
+            table_obj = document.add_table(rows=len(rows), cols=len(rows[0]))
+            for row_index, row in enumerate(rows):
+                for column_index, value in enumerate(row):
+                    table_obj.cell(row_index, column_index).text = str(value)
+    document.save(path)
+    return path
+
+
+def write_xlsx(path, sheets):
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for name, rows in sheets.items():
+        worksheet = workbook.create_sheet(title=name)
+        for row in rows:
+            worksheet.append(list(row))
+    workbook.save(path)
+    return path
+
+
+def write_csv(path, rows, encoding="utf-8"):
+    with open(path, "w", encoding=encoding, newline="") as handle:
+        writer = csv.writer(handle)
+        writer.writerows(rows)
+    return path

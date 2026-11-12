@@ -92,6 +92,74 @@ describe("Message", () => {
     expect(screen.getByText("Đã dừng trả lời.")).toBeInTheDocument();
   });
 
+
+  it("renders suggestion buttons with scores and sends the selected question", async () => {
+    const user = userEvent.setup();
+    const sendMessage = vi.fn();
+    const sendAction = vi.fn();
+    useChatStore.setState({ sendMessage, sendAction });
+
+    const message: ChatMessage = {
+      ...assistantMessage("Bạn muốn hỏi câu nào?"),
+      responseType: "suggest",
+      suggestions: [
+        { id: "a", question: "GPA của bạn?", score: 0.82 },
+        { id: "b", question: "Mục tiêu nghề nghiệp?", score: 0.71 },
+      ],
+      actions: [{ id: "other", label: "Câu hỏi khác" }],
+    };
+    render(<Message message={message} />);
+
+    expect(screen.getByText("82%")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /GPA của bạn/ }));
+    expect(sendMessage).toHaveBeenCalledWith("GPA của bạn?");
+
+    await user.click(screen.getByRole("button", { name: "Câu hỏi khác" }));
+    expect(sendAction).toHaveBeenCalledWith("other", {
+      topic: undefined,
+      label: "Câu hỏi khác",
+    });
+  });
+
+  it("renders topic chips and examples for clarify responses", async () => {
+    const user = userEvent.setup();
+    const sendAction = vi.fn();
+    useChatStore.setState({ sendMessage: vi.fn(), sendAction });
+
+    const message: ChatMessage = {
+      ...assistantMessage("Chọn một chủ đề"),
+      responseType: "clarify",
+      topics: ["Kỹ năng", "Mục tiêu"],
+      examples: ["Bạn giỏi gì?"],
+      actions: [{ id: "rephrase", label: "Hỏi lại cách khác" }],
+    };
+    render(<Message message={message} />);
+
+    expect(screen.getByText("Bạn giỏi gì?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Kỹ năng" }));
+    expect(sendAction).toHaveBeenCalledWith("topic", {
+      topic: "Kỹ năng",
+      label: "Kỹ năng",
+    });
+  });
+
+  it("renders document sources for answers", () => {
+    const message: ChatMessage = {
+      ...assistantMessage("Nội dung trích"),
+      responseType: "answer",
+      sources: [
+        { file: "CV.pdf", page: 2 },
+        { file: "data.xlsx", sheet: "Sheet1", row_start: 3, row_end: 4 },
+      ],
+    };
+    render(<Message message={message} />);
+
+    expect(screen.getByText("CV.pdf, trang 2")).toBeInTheDocument();
+    expect(
+      screen.getByText("data.xlsx, sheet Sheet1, dòng 3–4"),
+    ).toBeInTheDocument();
+  });
+
   it("shows an interrupted retry and an error retry", async () => {
     const user = userEvent.setup();
     const retry = vi.fn();

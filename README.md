@@ -9,14 +9,15 @@ Trình duyệt
     │  http://localhost:3000
     ▼
 frontend (nginx)  ──/chat, /chat/stream──▶  backend (Flask :5000)
-                                               ├─ chatbot.txt (nguồn duy nhất)
-                                               │    ├─ qa  → KB engine + khớp mờ + RAG
-                                               │    └─ doc → RAG
-                                               ├─ khớp mờ (RapidFuzz)
-                                               └─ RAG: bge-m3 + FAISS
+                                               ├─ chatbot.txt (nguồn hợp nhất)
+                                               │    ├─ qa  → KB engine (answer/suggest/clarify)
+                                               │    └─ doc → RAG dự phòng
+                                               ├─ doc_index/ (PDF, DOCX, XLSX, CSV, TXT, MD)
+                                               ├─ session (shown_ids, last_query, level)
+                                               └─ bge-m3 + FAISS
                                                         │
                                                         ▼
-                                               ollama (:11434) → Qwen2.5
+                                               ollama (:11434) → embedding; Qwen2.5 chỉ khi bật tóm tắt
 ```
 
 | Service | Build / Image | Cổng host | Vai trò |
@@ -92,12 +93,19 @@ Biến môi trường được đặt trong `backend/.env` hoặc trong mục `e
 | `CHATBOT_CHUNK_SIZE` | `500` | Kích thước đoạn |
 | `CHATBOT_CHUNK_OVERLAP` | `50` | Độ chồng đoạn |
 | `CHATBOT_TOP_K` | `3` | Số đoạn lấy ra mỗi câu hỏi |
-| `CHATBOT_QUERY_REWRITE` | `auto` | Sửa chính tả/bổ sung dấu: `auto`, `always`, `off` |
+| `CHATBOT_QUERY_REWRITE` | `off` | Sửa chính tả/bổ sung dấu: `auto`, `always`, `off` |
 | `CHATBOT_KB_PATH` | `backend/kb.json` | Tệp KB engine |
 | `CHATBOT_KB_HIGH_THRESHOLD` | `0.78` | Ngưỡng trả lời trực tiếp từ KB |
-| `CHATBOT_KB_MID_THRESHOLD` | `0.55` | Ngưỡng gợi ý câu hỏi gần đúng |
-| `CHATBOT_KB_MAX_SUGGESTIONS` | `3` | Số gợi ý tối đa |
-| `CHATBOT_QUERY_CACHE_SIZE` | `512` | Kích thước cache truy vấn |
+| `CHATBOT_SUGGEST_THRESHOLD` | `0.45` | Ngưỡng vào vùng gợi ý |
+| `CHATBOT_DOC_THRESHOLD` | `0.55` | Ngưỡng hit tài liệu tối thiểu |
+| `CHATBOT_AMBIGUITY_GAP` | `0.05` | Khoảng điểm coi là mơ hồ |
+| `CHATBOT_MAX_SUGGESTIONS` | `4` | Số gợi ý tối đa (2–4) |
+| `CHATBOT_DOC_INDEX_DIR` | `backend/doc_index` | Thư mục chỉ mục tài liệu phái sinh |
+| `CHATBOT_DOC_MAX_BYTES` | `20971520` | Kích thước tệp tài liệu tối đa |
+| `CHATBOT_SESSION_TTL` | `1800` | TTL phiên trạng thái (giây) |
+| `CHATBOT_SESSION_MAX` | `1000` | Số phiên tối đa trong RAM |
+| `CHATBOT_QUERY_CACHE_SIZE` | `512` | Kích thước cache đánh giá truy vấn |
+| `ENABLE_LLM_SUMMARY` | `false` | Bật tóm tắt LLM tuỳ chọn cho câu trả lời tài liệu |
 | `CHATBOT_RATE_LIMIT` | `60/minute` | Giới hạn request mỗi IP |
 | `CHATBOT_HOST` | `127.0.0.1` (local), `0.0.0.0` (Docker) | Địa chỉ Flask lắng nghe |
 | `CHATBOT_PORT` | `5000` | Cổng Flask |
@@ -192,6 +200,16 @@ docker compose exec backend python backend/scripts/manage_docs.py delete nghi-ph
 docker compose exec backend python backend/scripts/manage_docs.py ask "nhân viên được nghỉ bao nhiêu ngày phép?" --debug
 ```
 
+Nạp tài liệu PDF/DOCX/XLSX/CSV/TXT/MD vào chỉ mục phái sinh:
+
+```bash
+docker compose exec backend python backend/scripts/manage_docs.py ingest backend/data --recursive
+docker compose exec backend python backend/scripts/manage_docs.py list --json
+docker compose exec backend python backend/scripts/manage_docs.py remove old-cv.pdf
+```
+
+`ingest` chỉ đọc tệp nguồn và ghi `backend/doc_index/`; `remove` chỉ xoá khỏi chỉ mục, không xoá tệp gốc. Lần nạp lại chỉ xử lý tệp/đoạn thay đổi. Dùng `--full` để tính lại toàn bộ vector. Rollback chỉ mục bằng cách dừng backend, xoá `backend/doc_index/`, rồi chạy lại `ingest` (hoặc chạy không có tài liệu).
+
 Thao tác ghi dùng tệp tạm rồi thay thế nguyên tử. `ask --debug` chỉ dành cho người vận hành. Để rollback tạm thời về nguồn cũ, đặt `CHATBOT_LEGACY_SOURCES=true` rồi tạo lại backend.
 
 ## API
@@ -205,17 +223,31 @@ curl -s http://localhost:3000/chat \
 ```
 
 ```json
-{ "type": "answer", "score": null, "response": "GPA hiện tại là 8.30", "answer_bullets": null }
+{
+  "type": "answer",
+  "session_id": "s-...",
+  "score": 0.91,
+  "response": "GPA hiện tại là 8.30/10.0",
+  "answer_bullets": ["GPA xét chuyên ngành: 8.31/10.0"],
+  "source": "kb:gpa",
+  "sources": [],
+  "suggestions": [],
+  "topics": [],
+  "examples": [],
+  "actions": []
+}
 ```
+
+Ba loại phản hồi: `answer` (trả lời trực tiếp), `suggest` (2–4 gợi ý kèm `%` và action), `clarify` (menu chủ đề/ví dụ). Không có `type: "unknown"` và không trả chuỗi “không biết”. Gửi lại lựa chọn bằng `{"session_id":"...","action":"topic","topic":"Học tập"}` hoặc `{"action":"other"|"rephrase"|"retry"}`.
+
+Câu trả lời từ tài liệu có `sources` dạng `file, trang N` hoặc `file, sheet X, dòng A–B`. Bật `ENABLE_LLM_SUMMARY=true` nếu muốn tóm tắt LLM phần đã trích; mặc định tắt và mọi lỗi LLM đều quay về câu trích nguyên văn.
 
 ### `POST /chat/stream`
 
-Trả về `text/event-stream`:
+Trả về `text/event-stream`. `answer` phát `chunk` rồi `done`; `suggest`/`clarify` phát một event `result` chứa toàn bộ phản hồi rồi `done`:
 
 ```text
-data: {"type":"chunk","content":"GPA "}
-
-data: {"type":"chunk","content":"hiện tại là 8.30"}
+data: {"type":"chunk","content":"GPA hiện tại là 8.30"}
 
 data: {"type":"done"}
 ```
@@ -268,7 +300,8 @@ docker compose down -v                # dừng và xóa volume (mất model Olla
 - Frontend chờ backend khỏe mạnh rồi mới start; backend chờ Ollama khỏe mạnh.
 - Backend chỉ lắng nghe sau khi `warm_up()` xác nhận nguồn `chatbot.txt`, Ollama, hai model và chỉ mục FAISS.
 - Embedding cache `backend/embeddings_cache.npz` được tạo lại tự động khi nội dung nguồn hoặc cấu hình chunking thay đổi.
-- Lịch sử trò chuyện chỉ nằm trong bộ nhớ trình duyệt cho phiên hiện tại; tải lại trang sẽ bắt đầu không gian làm việc mới. Không có đăng nhập, lịch sử phía máy chủ hay đồng bộ đa thiết bị.
+- Lịch sử trò chuyện chỉ nằm trong bộ nhớ trình duyệt; trạng thái làm rõ (`session_id`, `shown_ids`, `level`) nằm trong RAM backend và hết hạn sau `CHATBOT_SESSION_TTL`. Không có đăng nhập, lịch sử phía máy chủ hay đồng bộ đa thiết bị.
+- Đường trả lời chính không gọi LLM. Ngân sách hiệu năng mục tiêu: p50 < 300 ms, p95 < 500 ms với 50+ lượt trên embedder đã warm; đo tự động trong `backend/tests/test_source_perf.py`.
 - Backend dùng Flask development server. Khi triển khai thật, nên chạy sau reverse proxy và thay bằng WSGI server (ví dụ Gunicorn).
 
 ## Cấu trúc repository

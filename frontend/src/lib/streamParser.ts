@@ -1,5 +1,8 @@
+import type { ChatResponse } from "./chatTypes";
+
 export type StreamEvent =
   | { type: "chunk"; content: string }
+  | { type: "result"; data: ChatResponse }
   | { type: "done" }
   | { type: "error"; message?: string };
 
@@ -19,7 +22,8 @@ export function parseSseEvent(line: string): StreamEvent | null {
       "type" in parsed &&
       (parsed.type === "chunk" ||
         parsed.type === "done" ||
-        parsed.type === "error")
+        parsed.type === "error" ||
+        parsed.type === "result")
     ) {
       return parsed;
     }

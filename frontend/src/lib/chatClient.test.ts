@@ -1,16 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ChatApiError, sendMessage } from "./chatClient";
-import {
-  jsonResponse,
-  splitStreamResponse,
-  streamResponse,
-} from "../test/mockChat";
+import { ChatApiError, sendAction, sendMessage } from "./chatClient";
+import type { ChatResponse } from "./chatTypes";
+import { jsonResponse } from "../test/mockChat";
 
-const STREAM_URL = "http://127.0.0.1:5000/chat/stream";
-const COMPLETE_URL = "http://127.0.0.1:5000/chat";
+const CHAT_URL = "http://127.0.0.1:5000/chat";
 
-describe("sendMessage", () => {
+function answer(): ChatResponse {
+  return {
+    type: "answer",
+    session_id: "s-1",
+    score: 0.91,
+    response: "GPA hiện tại là 8.30",
+    answer_bullets: null,
+    source: "kb:gpa",
+    sources: [],
+    actions: [],
+  };
+}
+
+describe("chat client", () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
@@ -29,98 +38,42 @@ describe("sendMessage", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to /chat when streaming is unavailable", async () => {
-    fetchMock
-      .mockResolvedValueOnce(new Response("", { status: 404 }))
-      .mockResolvedValueOnce(jsonResponse({ response: "Câu trả lời đầy đủ" }));
-
-    const result = await sendMessage("GPA?");
-
-    expect(result).toEqual({
-      mode: "complete",
-      content: "Câu trả lời đầy đủ",
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      1,
-      STREAM_URL,
-      expect.objectContaining({ method: "POST" }),
-    );
-    expect(fetchMock).toHaveBeenNthCalledWith(
-      2,
-      COMPLETE_URL,
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-
-  it("treats a JSON response from /chat/stream as a complete answer", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ response: "Một lần" }));
-
-    const result = await sendMessage("câu hỏi");
-
-    expect(result).toEqual({ mode: "complete", content: "Một lần" });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("concatenates streamed chunks and reports completion", async () => {
-    fetchMock.mockResolvedValueOnce(
-      streamResponse([
-        { type: "chunk", content: "Xin " },
-        { type: "chunk", content: "chào" },
-        { type: "done" },
-      ]),
-    );
+  it("uses the canonical /chat endpoint and returns structured data", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(answer()));
     const onChunk = vi.fn();
 
-    const result = await sendMessage("câu hỏi", { onChunk });
+    const result = await sendMessage("GPA?", { sessionId: "s-1", onChunk });
 
-    expect(result).toEqual({ mode: "stream", content: "Xin chào", interrupted: false });
-    expect(onChunk).toHaveBeenNthCalledWith(1, "Xin ");
-    expect(onChunk).toHaveBeenNthCalledWith(2, "chào");
+    expect(result.mode).toBe("complete");
+    expect(result.content).toBe("GPA hiện tại là 8.30");
+    expect(result.response.type).toBe("answer");
+    expect(onChunk).toHaveBeenCalledWith("GPA hiện tại là 8.30");
+    expect(fetchMock).toHaveBeenCalledWith(
+      CHAT_URL,
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
-  it("handles events split across network chunks", async () => {
-    const first = 'data: {"type":"chunk","content":"Xin "}\n\n';
-    const second =
-      'data: {"type":"chunk","content":"chào"}\n\ndata: {"type":"done"}\n\n';
+  it("sends session and action payload", async () => {
     fetchMock.mockResolvedValueOnce(
-      splitStreamResponse([
-        first.slice(0, 17),
-        first.slice(17) + second.slice(0, 12),
-        second.slice(12),
-      ]),
+      jsonResponse({
+        type: "clarify",
+        session_id: "s-1",
+        response: "Chọn chủ đề",
+        message: "Chọn chủ đề",
+        topics: ["Kỹ năng"],
+        examples: [],
+        actions: [{ id: "rephrase", label: "Hỏi lại cách khác" }],
+      }),
     );
 
-    const result = await sendMessage("câu hỏi");
+    await sendAction("topic", { sessionId: "s-1", topic: "Kỹ năng" });
 
-    expect(result.content).toBe("Xin chào");
-    expect(result.interrupted).toBe(false);
-  });
-
-  it("marks a stream without a terminal event as interrupted", async () => {
-    fetchMock.mockResolvedValueOnce(
-      splitStreamResponse([
-        'data: {"type":"chunk","content":"một phần"}\n\n',
-      ]),
-    );
-
-    const result = await sendMessage("câu hỏi");
-
-    expect(result.mode).toBe("stream");
-    expect(result.content).toBe("một phần");
-    expect(result.interrupted).toBe(true);
-  });
-
-  it("throws a server error for an error event", async () => {
-    fetchMock.mockResolvedValueOnce(
-      streamResponse([
-        { type: "chunk", content: "bắt đầu" },
-        { type: "error", message: "Lỗi máy chủ" },
-      ]),
-    );
-
-    await expect(sendMessage("câu hỏi")).rejects.toMatchObject({
-      code: "server",
-      retryable: true,
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body).toMatchObject({
+      session_id: "s-1",
+      action: "topic",
+      topic: "Kỹ năng",
     });
   });
 
@@ -132,6 +85,14 @@ describe("sendMessage", () => {
     const error = await sendMessage("câu hỏi").catch((value) => value);
     expect(error).toBeInstanceOf(ChatApiError);
     expect(error).toMatchObject({ code: "server", retryable: true });
+  });
+
+  it("rejects an invalid response body", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ response: "không cấu trúc" }));
+
+    await expect(sendMessage("câu hỏi")).rejects.toMatchObject({
+      code: "server",
+    });
   });
 
   it("reports abort as an aborted error", async () => {

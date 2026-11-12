@@ -48,6 +48,9 @@ qa copy.txt
 # KB Engine generated cache
 backend/embeddings_cache.npz
 
+# Document index (derived data)
+backend/doc_index/
+
 # Spec Kit / tooling state
 .specify/
 .opencode/

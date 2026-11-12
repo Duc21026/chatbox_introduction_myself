@@ -7,14 +7,27 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 try:
-    from .chatbox import ask_ai, ask_ai_stream, warm_up
+    from .assistant import Assistant
+    from .chatbox import retrieve_rag_documents, retrieve_source_qa, warm_up
+    from .doc_index import DocIndex
     from . import kb_engine
 except ImportError:  # direct execution: python backend/app.py
-    from chatbox import ask_ai, ask_ai_stream, warm_up
+    from assistant import Assistant
+    from chatbox import retrieve_rag_documents, retrieve_source_qa, warm_up
+    from doc_index import DocIndex
     import kb_engine
 
 app = Flask(__name__)
 CORS(app)
+
+# Load the derived document index once at startup.  Missing/broken index is
+# non-fatal: the assistant simply behaves as if no documents were ingested.
+_doc_index = DocIndex()
+_assistant = Assistant(
+    doc_searcher=_doc_index,
+    rag_searcher=retrieve_rag_documents,
+    qa_searcher=retrieve_source_qa,
+)
 
 # ---------------------------------------------------------------------------
 # Rate limiter (60 req/minute per IP by default)
@@ -43,30 +56,78 @@ def _sse(payload):
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _validated_question():
-    """Extract and validate 'message' from JSON body.
-
-    Returns (question_str, None) on success or (None, error_response) on failure.
-    HTTP 400 for missing/non-JSON, HTTP 422 for blank or too-long message.
-    """
+def _validated_chat_request():
+    """Validate ChatRequest fields shared by /chat and /chat/stream."""
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         return None, (jsonify({"error": "Dữ liệu gửi lên phải là JSON"}), 400)
 
-    question = data.get("message")
-    if not isinstance(question, str):
-        return None, (jsonify({"error": "Thiếu trường 'message'"}), 400)
+    action = data.get("action")
+    if action is not None:
+        if not isinstance(action, str) or action.strip().lower() not in {
+            "other",
+            "topic",
+            "rephrase",
+            "retry",
+        }:
+            return None, (jsonify({"error": "Trường 'action' không hợp lệ"}), 400)
+        action = action.strip().lower()
+    else:
+        action = None
 
-    question = question.strip()
-    if not question:
-        return None, (jsonify({"error": "Trường 'message' không được để trống"}), 422)
-    if len(question) > 200:
+    topic = data.get("topic")
+    if topic is not None and not isinstance(topic, str):
+        return None, (jsonify({"error": "Trường 'topic' phải là chuỗi"}), 400)
+    if action == "topic" and (not topic or not topic.strip()):
+        return None, (
+            jsonify({"error": "Thiếu trường 'topic' khi action='topic'"}),
+            400,
+        )
+    if isinstance(topic, str):
+        topic = topic.strip()
+        if len(topic) > 120:
+            return None, (
+                jsonify({"error": "Trường 'topic' không được vượt quá 120 ký tự"}),
+                422,
+            )
+
+    session_id = data.get("session_id")
+    if session_id is not None and not isinstance(session_id, str):
+        return None, (jsonify({"error": "Trường 'session_id' phải là chuỗi"}), 400)
+    if isinstance(session_id, str):
+        session_id = session_id.strip()[:100] or None
+
+    message = data.get("message")
+    if message is None:
+        if action is None:
+            return None, (jsonify({"error": "Thiếu trường 'message'"}), 400)
+        message = ""
+    if not isinstance(message, str):
+        return None, (jsonify({"error": "Trường 'message' phải là chuỗi"}), 400)
+    message = message.strip()
+    if action is None:
+        if not message:
+            return None, (
+                jsonify({"error": "Trường 'message' không được để trống"}),
+                422,
+            )
+        if len(message) > 200:
+            return None, (
+                jsonify({"error": "Trường 'message' không được vượt quá 200 ký tự"}),
+                422,
+            )
+    elif message and len(message) > 200:
         return None, (
             jsonify({"error": "Trường 'message' không được vượt quá 200 ký tự"}),
             422,
         )
 
-    return question, None
+    return {
+        "question": message or None,
+        "session_id": session_id,
+        "action": action,
+        "topic": topic,
+    }, None
 
 
 # ---------------------------------------------------------------------------
@@ -75,81 +136,46 @@ def _validated_question():
 
 @app.route("/chat", methods=["POST"])
 def chatbot():
-    question, error = _validated_question()
+    payload, error = _validated_chat_request()
     if error is not None:
         return error
-
-    # 1. KB Engine (structured Q&A from kb.json)
     try:
-        kb_response = kb_engine.query(question)
-    except Exception:
-        kb_response = None  # non-fatal: fall through to RAG
-
-    if kb_response is not None:
-        return jsonify(kb_response)
-
-    # 2. RAG fallback (FAISS + Ollama)
-    try:
-        answer = ask_ai(question)
+        response = _assistant.handle(**payload)
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
-
-    return jsonify({
-        "type": "answer",
-        "score": None,
-        "response": answer,
-        "answer_bullets": None,
-    })
+    return jsonify(response)
 
 
 @app.route("/chat/stream", methods=["POST"])
 def chatbot_stream():
-    question, error = _validated_question()
+    payload, error = _validated_chat_request()
     if error is not None:
         return error
-
-    # KB Engine — if it has a crisp answer, emit it as a single chunk
     try:
-        kb_response = kb_engine.query(question)
-    except Exception:
-        kb_response = None
+        try:
+            response = _assistant.handle(**payload, stream_summary=True)
+        except TypeError:
+            response = _assistant.handle(**payload)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
-    if kb_response is not None:
-        def _kb_stream():
-            response_text = kb_response.get("response", "")
+    def generate():
+        chunks = response.get("_summary_chunks") or []
+        if chunks:
+            for chunk in chunks:
+                yield _sse({"type": "chunk", "content": chunk})
+        else:
+            response_text = response.get("response", "")
             if response_text:
                 yield _sse({"type": "chunk", "content": response_text})
-            yield _sse({"type": "done"})
-
-        return Response(
-            stream_with_context(_kb_stream()),
-            mimetype="text/event-stream",
-            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-        )
-
-    # RAG streaming fallback
-    def generate():
-        try:
-            for chunk in ask_ai_stream(question):
-                if chunk:
-                    yield _sse({"type": "chunk", "content": chunk})
-        except Exception:
-            yield _sse(
-                {
-                    "type": "error",
-                    "message": "Không thể tạo câu trả lời. Vui lòng thử lại.",
-                }
-            )
-            return
+        if response.get("type") in {"suggest", "clarify"}:
+            yield _sse({"type": "result", "data": response})
         yield _sse({"type": "done"})
 
     return Response(
         stream_with_context(generate()),
         mimetype="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 

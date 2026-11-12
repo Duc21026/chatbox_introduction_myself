@@ -4,12 +4,13 @@ Architecture (from specs/004-self-intro-chatbot-api/plan.md):
   - Loads kb.json at startup, embeds all question variants via bge-m3 (Ollama).
   - Caches the embedding matrix to embeddings_cache.npz (invalidated by MD5 hash).
   - Scores each incoming query with 0.8*cosine + 0.2*fuzzy (rapidfuzz.WRatio).
-  - Returns AnswerResponse | SuggestResponse | UnknownResponse dict, or None if
-    embeddings are not yet loaded (caller falls back to RAG pipeline).
-  - LLM (Qwen) is called only in the MID zone (0.55–0.78) for spell correction,
-    re-using _rewrite_query() from chatbox.py.
+  - Returns :class:`QueryEvaluation` with all scored candidates.  The caller
+    (``assistant``) decides between answer / suggest / clarify; this module no
+    longer builds an ``unknown`` response and never calls an LLM on the main
+    path.
 
-Contract: specs/004-self-intro-chatbot-api/contracts/chat-api.md
+Contracts: specs/004-self-intro-chatbot-api/contracts/chat-api.md and
+specs/006-tiered-suggest-ingest/contracts/chat-api.md
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ import json
 import logging
 import os
 import time
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -68,11 +70,30 @@ def _embedding_model() -> str:
 def _high_threshold() -> float:
     return _env_float("CHATBOT_KB_HIGH_THRESHOLD", 0.78)
 
-def _mid_threshold() -> float:
-    return _env_float("CHATBOT_KB_MID_THRESHOLD", 0.55)
+def _suggest_threshold() -> float:
+    return _env_float("CHATBOT_SUGGEST_THRESHOLD", 0.45)
+
+def _ambiguity_gap() -> float:
+    return _env_float("CHATBOT_AMBIGUITY_GAP", 0.05)
 
 def _max_suggestions() -> int:
-    return _env_int("CHATBOT_KB_MAX_SUGGESTIONS", 3)
+    raw = os.environ.get("CHATBOT_MAX_SUGGESTIONS")
+    if raw is None or not raw.strip():
+        raw = os.environ.get("CHATBOT_KB_MAX_SUGGESTIONS", "4")
+    try:
+        return max(1, int(raw))
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Giá trị biến môi trường CHATBOT_MAX_SUGGESTIONS không hợp lệ: {raw!r}"
+        ) from exc
+
+
+def _warn_deprecated_env() -> None:
+    if os.environ.get("CHATBOT_KB_MID_THRESHOLD"):
+        logger.warning(
+            "CHATBOT_KB_MID_THRESHOLD đã deprecated và bị bỏ qua; "
+            "dùng CHATBOT_SUGGEST_THRESHOLD thay thế."
+        )
 
 def _cache_size() -> int:
     return _env_int("CHATBOT_QUERY_CACHE_SIZE", 512)
@@ -95,6 +116,7 @@ _questions_norm: list[str] = []     # normalized versions (for fuzzy)
 _item_indices: list[int] = []       # kb_items index for each question
 _embeddings: Optional[np.ndarray] = None  # shape (N, D), float32
 _query_cache: Optional[LRUCache] = None   # initialized lazily
+_evaluation_cache: Optional[LRUCache] = None
 _kb_hash_value: Optional[str] = None
 _source_signature = None
 
@@ -107,6 +129,34 @@ def _get_query_cache() -> LRUCache:
     if _query_cache is None:
         _query_cache = LRUCache(maxsize=_cache_size())
     return _query_cache
+
+
+def _get_evaluation_cache() -> LRUCache:
+    global _evaluation_cache
+    if _evaluation_cache is None:
+        _evaluation_cache = LRUCache(maxsize=_cache_size())
+    return _evaluation_cache
+
+
+@dataclass
+class QueryEvaluation:
+    norm: str
+    word_count: int
+    query_vec: Optional[np.ndarray]
+    top1: float = 0.0
+    top2: float = 0.0
+    candidates: list[dict] = field(default_factory=list)
+    ambiguous: bool = False
+    answer_item: Optional[dict] = None
+    embeddings_ready: bool = False
+    profane: bool = False
+
+
+def get_items() -> list[dict]:
+    """Return a copy of the validated KB items (for topic menus)."""
+
+    _refresh_if_changed()
+    return list(_kb_items)
 
 
 def _kb_hash(source) -> str:
@@ -238,50 +288,6 @@ def _embed_query(query_norm: str) -> Optional[np.ndarray]:
         return None
 
 # ---------------------------------------------------------------------------
-# Response builders
-# ---------------------------------------------------------------------------
-
-def _build_answer_response(item: dict, score: float) -> dict:
-    bullets = item.get("answer_bullets")
-    if bullets and len(bullets) > 0:
-        response_text = ", ".join(str(b) for b in bullets)
-    else:
-        response_text = str(item.get("answer") or "")
-    return {
-        "type": "answer",
-        "score": round(score, 2),
-        "response": response_text,
-        "answer_bullets": bullets if (bullets and len(bullets) > 0) else None,
-    }
-
-
-def _build_suggest_response(candidates: list[tuple[str, float]]) -> dict:
-    """candidates: list of (original_question, score)."""
-    return {
-        "type": "suggest",
-        "response": "Ý bạn có phải là một trong những câu hỏi này không?",
-        "suggestions": [
-            {"question": q, "score": round(s, 2)} for q, s in candidates
-        ],
-    }
-
-
-def _build_unknown_response() -> dict:
-    topics = []
-    seen: set[str] = set()
-    for item in _kb_items:
-        t = item.get("topic", "")
-        if t and t not in seen:
-            topics.append(t)
-            seen.add(t)
-    return {
-        "type": "unknown",
-        "response": "Mình chưa có thông tin về điều này.",
-        "message": "Mình chưa có thông tin về điều này. Bạn có thể hỏi về các chủ đề sau:",
-        "topics": topics,
-    }
-
-# ---------------------------------------------------------------------------
 # Warm-up
 # ---------------------------------------------------------------------------
 
@@ -398,102 +404,129 @@ def _refresh_if_changed() -> None:
 # Public query interface
 # ---------------------------------------------------------------------------
 
-def query(message: str) -> Optional[dict]:
-    """Return ChatResponse dict or None if KB Engine is not ready / no match.
+def evaluate(message: str, query_vec: Optional[np.ndarray] = None) -> QueryEvaluation:
+    """Score a question against the KB without calling any LLM.
 
-    None signals the caller (app.py) to fall back to the RAG pipeline.
+    The caller receives every scored question (sorted descending) so it can
+    build suggestions, while ``top1``/``top2`` drive the three-tier decision.
     """
+
+    _warn_deprecated_env()
     _refresh_if_changed()
-    if _embeddings is None or len(_embeddings) == 0:
-        return None
-
-    cache = _get_query_cache()
-
-    # Normalize
-    norm = normalize_query(message)
-    if not norm:
-        return _build_unknown_response()
-
-    # Profanity check
+    norm = normalize_query(message) if isinstance(message, str) else ""
     tokens = set(norm.split())
-    if tokens & _PROFANITY_LIST:
-        return _build_unknown_response()
+    profane = bool(tokens & _PROFANITY_LIST)
+    if not norm or profane:
+        return QueryEvaluation(
+            norm=norm,
+            word_count=0 if not norm else len(norm.split()),
+            query_vec=None,
+            profane=profane,
+        )
 
-    # LRU cache lookup
-    if norm in cache:
-        return cache[norm]
+    if _embeddings is None or len(_embeddings) == 0:
+        return QueryEvaluation(
+            norm=norm,
+            word_count=len(norm.split()),
+            query_vec=None,
+        )
 
-    # Embed query
-    query_emb = _embed_query(norm)
-    if query_emb is None:
-        return None  # Ollama unavailable → fall back to RAG
+    cache = _get_evaluation_cache()
+    cached = cache.get(norm)
+    if cached is not None and query_vec is None:
+        return cached
 
-    # Score all candidates
+    if query_vec is None:
+        query_vec = _embed_query(norm)
+    if query_vec is None:
+        return QueryEvaluation(
+            norm=norm,
+            word_count=len(norm.split()),
+            query_vec=None,
+        )
+
+    query_vec = np.asarray(query_vec, dtype=np.float32)
     n = len(_embeddings)
     scores = np.empty(n, dtype=np.float32)
     for i in range(n):
-        scores[i] = _hybrid_score(query_emb, _embeddings[i], norm, _questions_norm[i])
+        scores[i] = _hybrid_score(query_vec, _embeddings[i], norm, _questions_norm[i])
 
-    best_idx = int(np.argmax(scores))
-    best_score = float(scores[best_idx])
+    order = np.argsort(scores)[::-1]
+    candidates = []
+    for i in order:
+        item = _kb_items[_item_indices[int(i)]]
+        question = _questions[int(i)]
+        candidates.append(
+            {
+                "source": "kb",
+                "item_id": item.get("id"),
+                "topic": item.get("topic"),
+                "question": question,
+                "norm": _questions_norm[int(i)],
+                "score": round(float(scores[int(i)]), 4),
+                "question_count": len(item.get("questions") or []),
+                "answer": item.get("answer"),
+                "answer_bullets": item.get("answer_bullets"),
+            }
+        )
 
-    HIGH = _high_threshold()
-    MID = _mid_threshold()
+    top1 = float(scores[order[0]]) if n else 0.0
+    top2 = float(scores[order[1]]) if n > 1 else 0.0
+    gap = _ambiguity_gap()
+    suggest_floor = _suggest_threshold()
+    high = _high_threshold()
+    ambiguous = (
+        len(norm.split()) <= 3
+        or (top1 - top2) < gap
+        or (suggest_floor <= top1 < high)
+    )
+    answer_item = None
+    if candidates and top1 >= high and not ambiguous:
+        answer_item = _kb_items[_item_indices[int(order[0])]]
 
-    # HIGH zone → answer directly
-    if best_score >= HIGH:
-        item = _kb_items[_item_indices[best_idx]]
-        result = _build_answer_response(item, best_score)
-        cache[norm] = result
-        return result
+    evaluation = QueryEvaluation(
+        norm=norm,
+        word_count=len(norm.split()),
+        query_vec=query_vec,
+        top1=round(top1, 4),
+        top2=round(top2, 4),
+        candidates=candidates,
+        ambiguous=bool(ambiguous),
+        answer_item=answer_item,
+        embeddings_ready=True,
+    )
+    cache[norm] = evaluation
+    return evaluation
 
-    # MID zone → try spell correction via Qwen, then re-score
-    if best_score >= MID:
-        rewritten_norm = _try_rewrite(message)
-        if rewritten_norm and rewritten_norm != norm:
-            rw_emb = _embed_query(rewritten_norm)
-            if rw_emb is not None:
-                rw_scores = np.empty(n, dtype=np.float32)
-                for i in range(n):
-                    rw_scores[i] = _hybrid_score(
-                        rw_emb, _embeddings[i], rewritten_norm, _questions_norm[i]
-                    )
-                rw_best_idx = int(np.argmax(rw_scores))
-                rw_best_score = float(rw_scores[rw_best_idx])
-                if rw_best_score >= HIGH:
-                    item = _kb_items[_item_indices[rw_best_idx]]
-                    result = _build_answer_response(item, rw_best_score)
-                    cache[norm] = result
-                    return result
-                # Use rewritten scores for suggest if better
-                if rw_best_score > best_score:
-                    scores = rw_scores
 
-        # Build suggest list from candidates ≥ MID
-        candidates: list[tuple[str, float]] = []
-        for i in np.argsort(scores)[::-1]:
-            s = float(scores[i])
-            if s < MID:
-                break
-            q_display = _questions[i]
-            if not any(q_display == c[0] for c in candidates):
-                candidates.append((q_display, s))
-            if len(candidates) >= _max_suggestions():
-                break
+def query(message: str) -> Optional[dict]:
+    """Legacy wrapper. New code should use :func:`evaluate` via ``assistant``.
 
-        if candidates:
-            result = _build_suggest_response(candidates)
-            cache[norm] = result
-            return result
+    Returns an answer only for a crisp high-confidence KB match; all other
+    cases return ``None`` so callers can fall through to suggestions/documents.
+    """
 
-    # Below MID → unknown
-    result = _build_unknown_response()
-    cache[norm] = result
-    return result
+    evaluation = evaluate(message)
+    if not evaluation.embeddings_ready or evaluation.answer_item is None:
+        return None
+    item = evaluation.answer_item
+    bullets = item.get("answer_bullets")
+    response_text = (
+        ", ".join(str(b) for b in bullets)
+        if bullets
+        else str(item.get("answer") or "")
+    )
+    return {
+        "type": "answer",
+        "score": round(evaluation.top1, 2),
+        "response": response_text,
+        "answer_bullets": bullets if bullets else None,
+    }
 
 
 def _try_rewrite(original_message: str) -> Optional[str]:
-    """Call Qwen spell-corrector from chatbox._rewrite_query() if available."""
+    """Deprecated compatibility helper; never called by ``evaluate``."""
+
     try:
         try:
             from .chatbox import _rewrite_query
