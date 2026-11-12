@@ -18,7 +18,7 @@ def _codes(result):
 
 def _record(kind="qa", record_id="gpa", topic="Học tập", extra=""):
     questions = "questions:\n- GPA của bạn?\n" if kind == "qa" else ""
-    answer = "answer:\n8.30\n" if kind == "qa" else ""
+    answer = "answer:\n8.51\n" if kind == "qa" else ""
     content = "content:\nNội dung RAG.\n" if kind == "doc" else ""
     return (
         "=== RECORD ===\n"

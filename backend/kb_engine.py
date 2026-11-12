@@ -475,9 +475,13 @@ def evaluate(message: str, query_vec: Optional[np.ndarray] = None) -> QueryEvalu
     gap = _ambiguity_gap()
     suggest_floor = _suggest_threshold()
     high = _high_threshold()
+    same_item_second = (
+        len(candidates) > 1
+        and candidates[0].get("item_id") == candidates[1].get("item_id")
+    )
     ambiguous = (
-        len(norm.split()) <= 3
-        or (top1 - top2) < gap
+        (len(norm.split()) <= 3 and top1 < 0.95 and not same_item_second)
+        or ((top1 - top2) < gap and not same_item_second)
         or (suggest_floor <= top1 < high)
     )
     answer_item = None

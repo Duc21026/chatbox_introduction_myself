@@ -41,7 +41,7 @@ def test_signature_change_reloads_and_same_signature_reuses_cache(
 ):
     config = _config(tmp_path, monkeypatch)
     path = Path(config.source_path)
-    path.write_text(_source("8.30"), encoding="utf-8")
+    path.write_text(_source("8.51"), encoding="utf-8")
 
     calls = []
     real_load = source_format.load_source
@@ -57,7 +57,7 @@ def test_signature_change_reloads_and_same_signature_reuses_cache(
 
     assert len(calls) == 1
     assert first is second
-    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.30"
+    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.51"
 
     old_mtime = path.stat().st_mtime_ns
     path.write_text(_source("8.40"), encoding="utf-8")
@@ -73,7 +73,7 @@ def test_signature_change_reloads_and_same_signature_reuses_cache(
 def test_invalid_edit_keeps_previous_index(tmp_path, monkeypatch):
     config = _config(tmp_path, monkeypatch)
     path = Path(config.source_path)
-    path.write_text(_source("8.30"), encoding="utf-8")
+    path.write_text(_source("8.51"), encoding="utf-8")
 
     good = chatbox.get_source()
     path.write_text("not a source", encoding="utf-8")
@@ -82,4 +82,34 @@ def test_invalid_edit_keeps_previous_index(tmp_path, monkeypatch):
     result = chatbox.get_source()
 
     assert result is good
-    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.30"
+    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.51"
+
+
+def test_stale_value_edit_keeps_previous_index(tmp_path, monkeypatch):
+    config = _config(tmp_path, monkeypatch)
+    path = Path(config.source_path)
+    path.write_text(_source("8.51"), encoding="utf-8")
+
+    good = chatbox.get_source()
+    path.write_text(_source("8.30 với 62 tín chỉ"), encoding="utf-8")
+    os.utime(path, ns=(path.stat().st_mtime_ns + 1_000_000,) * 2)
+
+    result = chatbox.get_source()
+
+    assert result is good
+    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.51"
+
+
+def test_unknown_placeholder_edit_keeps_previous_index(tmp_path, monkeypatch):
+    config = _config(tmp_path, monkeypatch)
+    path = Path(config.source_path)
+    path.write_text(_source("8.51"), encoding="utf-8")
+
+    good = chatbox.get_source()
+    path.write_text(_source("{{khong-ton-tai}}"), encoding="utf-8")
+    os.utime(path, ns=(path.stat().st_mtime_ns + 1_000_000,) * 2)
+
+    result = chatbox.get_source()
+
+    assert result is good
+    assert chatbox.get_qa_data()["gpa của bạn?"] == "8.51"

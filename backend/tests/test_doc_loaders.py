@@ -97,3 +97,56 @@ def test_empty_pdf_reports_no_text(tmp_path):
     with pytest.raises(DocLoadError) as error:
         extract_blocks(str(path))
     assert error.value.code == "E_NO_TEXT"
+
+
+def test_pdf_pages_start_at_one_and_noise_removed(tmp_path):
+    path = write_pdf(
+        tmp_path / "bang-diem.pdf",
+        [
+            "Bảng điểm trang 1\nabout:blank 1/2",
+            "Trang hai chỉ có chữ ký\nabout:blank 2/2",
+        ],
+    )
+    blocks = extract_blocks(str(path))
+
+    assert [block.page for block in blocks] == [1, 2]
+    text = " ".join(block.text for block in blocks)
+    assert "about:blank" not in text
+
+
+def test_float_noise_is_rounded(tmp_path):
+    path = write_csv(tmp_path / "noise.csv", [["Môn", "Điểm"], ["Toán", 9.300000000000001]])
+    blocks = extract_blocks(str(path))
+
+    text = " ".join(block.text for block in blocks)
+    assert "9.3" in text
+    assert "000000" not in text
+
+
+def test_unnamed_columns_and_nan_are_dropped(tmp_path):
+    import pandas as pd
+
+    frame = pd.DataFrame(
+        [["Toán", 9.4, None, "x"]],
+        columns=["Môn", "Điểm", "Unnamed: 2", "Unnamed: 3"],
+    )
+    path = tmp_path / "unnamed.xlsx"
+    frame.to_excel(str(path), index=False)
+
+    blocks = extract_blocks(str(path))
+    text = " ".join(block.text for block in blocks)
+
+    assert "Unnamed" not in text
+    assert "nan" not in text.lower()
+
+
+def test_duplicate_lines_are_collapsed(tmp_path):
+    path = tmp_path / "repeat.txt"
+    path.write_text(
+        "TRƯỜNG ĐẠI HỌC\nTRƯỜNG ĐẠI HỌC\nNội dung thật.\n",
+        encoding="utf-8",
+    )
+    blocks = extract_blocks(str(path))
+
+    text = " ".join(block.text for block in blocks)
+    assert text.count("TRƯỜNG ĐẠI HỌC") == 1

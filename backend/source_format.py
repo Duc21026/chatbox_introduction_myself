@@ -53,14 +53,20 @@ FIELD_ORDER = (
     "kind",
     "id",
     "topic",
+    "label",
+    "value",
+    "snapshot",
     "questions",
     "answer",
     "bullets",
     "content",
     "source",
+    "status",
 )
 BLOCK_FIELDS = frozenset({"questions", "answer", "bullets", "content"})
-INLINE_FIELDS = frozenset({"kind", "id", "topic", "source"})
+INLINE_FIELDS = frozenset(
+    {"kind", "id", "topic", "label", "value", "snapshot", "source", "status"}
+)
 FIELD_INDEX = {name: index for index, name in enumerate(FIELD_ORDER)}
 RESERVED_PREFIXES = tuple(f"{name}:" for name in FIELD_ORDER) + (
     RECORD_START,
@@ -68,6 +74,18 @@ RESERVED_PREFIXES = tuple(f"{name}:" for name in FIELD_ORDER) + (
     "#",
 )
 _UNKNOWN_FIELD = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*:")
+PLACEHOLDER_PATTERN = re.compile(r"\{\{([a-z0-9][a-z0-9_-]{0,63})\}\}")
+SNAPSHOT_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+MAX_VALUE = 4000
+STALE_PATTERNS = (
+    (re.compile(r"8\.30(?![0-9])"), "8.30"),
+    (re.compile(r"8\.3(?![0-9.])"), "8.3"),
+    (re.compile(r"62 tín chỉ"), "62 tín chỉ"),
+    (re.compile(r"62 TC"), "62 TC"),
+    (re.compile(r"17 môn"), "17 môn"),
+    (re.compile(r"3\.7/4\.0"), "3.7/4.0"),
+)
+FACT_ONLY_FIELDS = frozenset({"label", "value", "snapshot"})
 
 
 @dataclass(frozen=True)
@@ -98,6 +116,10 @@ class SourceRecord:
     bullets: list[str] = field(default_factory=list)
     content: Optional[str] = None
     source: Optional[str] = None
+    label: Optional[str] = None
+    value: Optional[str] = None
+    snapshot: Optional[str] = None
+    status: str = "active"
     line_start: int = 0
     line_end: int = 0
 
@@ -144,6 +166,16 @@ class KBItem:
 
 
 @dataclass(frozen=True)
+class Fact:
+    id: str
+    label: str
+    value: str
+    snapshot: Optional[str] = None
+    source: Optional[str] = None
+    status: str = "active"
+
+
+@dataclass(frozen=True)
 class RAGDocument:
     page_content: str
     metadata: dict
@@ -167,8 +199,13 @@ class DerivedSource:
     qa_pairs: list[QAPair] = field(default_factory=list)
     kb_items: list[KBItem] = field(default_factory=list)
     rag_documents: list[RAGDocument] = field(default_factory=list)
+    facts: list[Fact] = field(default_factory=list)
     kb_hash: str = ""
     signature: Optional[SourceSignature] = None
+
+    @property
+    def facts_map(self):
+        return {fact.id: fact for fact in self.facts if fact.status == "active"}
 
 
 @dataclass
@@ -189,6 +226,7 @@ class ValidationResult:
             "records": len(records),
             "qa": sum(1 for record in records if record.kind == "qa"),
             "doc": sum(1 for record in records if record.kind == "doc"),
+            "fact": sum(1 for record in records if record.kind == "fact"),
         }
 
     def to_dict(self):
@@ -236,11 +274,17 @@ def _label_of(line):
 
 
 def _unescape_line(line):
-    """Return (content, was_unnecessary).  Unescapes one leading backslash."""
+    """Return (content, was_unnecessary).  Unescapes one leading backslash.
+
+    Dòng bắt đầu bằng ``\\{{`` được giữ nguyên dấu gạch chéo để bước giải
+    placeholder hiểu đó là chuỗi theo nghĩa đen (xem ``resolve_placeholders``).
+    """
 
     if not line.startswith("\\"):
         return line, False
     rest = line[1:]
+    if rest.startswith("{{"):
+        return line, False
     necessary = rest.startswith(RESERVED_PREFIXES) or rest.startswith("\\")
     return rest, not necessary
 
@@ -404,6 +448,11 @@ def _parse_record(lines, start):
         bullets=_bullet_items(values),
         content=_text_block(values, "content"),
         source=str(values.get("source") or "").strip() or None,
+        label=str(values.get("label") or "").strip() or None,
+        value=str(values.get("value") or "").strip() or None,
+        snapshot=str(values.get("snapshot") or "").strip() or None,
+        status=str(values.get("status") or "active").strip().lower()
+        or "active",
         line_start=line_start,
         line_end=line_end,
     )
@@ -441,6 +490,80 @@ def _text_block(values, name):
     return text or None
 
 
+def _validate_fact_record(record, field_lines, line_of):
+    issues = []
+    rid = record.id or None
+
+    if not record.label:
+        issues.append(
+            _error(
+                "E_MISSING_FIELD",
+                "Bản ghi fact phải có trường 'label'.",
+                line_of("label") if "label" in field_lines else record.line_start,
+                rid,
+            )
+        )
+    elif len(record.label) > MAX_TOPIC:
+        issues.append(
+            _error(
+                "E_MISSING_FIELD",
+                f"label dài {len(record.label)} ký tự; tối đa {MAX_TOPIC}.",
+                line_of("label"),
+                rid,
+            )
+        )
+
+    if record.value is None or record.value == "":
+        issues.append(
+            _error(
+                "E_MISSING_FIELD",
+                "Bản ghi fact phải có trường 'value' không rỗng.",
+                line_of("value") if "value" in field_lines else record.line_start,
+                rid,
+            )
+        )
+    elif len(record.value) > MAX_VALUE:
+        issues.append(
+            _error(
+                "E_MISSING_FIELD",
+                f"value dài {len(record.value)} ký tự; tối đa {MAX_VALUE}.",
+                line_of("value"),
+                rid,
+            )
+        )
+
+    if record.snapshot and not SNAPSHOT_PATTERN.match(record.snapshot):
+        issues.append(
+            _error(
+                "E_VALUE",
+                f"snapshot '{record.snapshot}' sai định dạng; dùng YYYY-MM-DD.",
+                line_of("snapshot"),
+                rid,
+            )
+        )
+
+    if record.topic:
+        issues.append(
+            _error(
+                "E_FIELD_NOT_ALLOWED",
+                "Trường 'topic' không dùng cho bản ghi fact.",
+                line_of("topic"),
+                rid,
+            )
+        )
+    for name in ("questions", "answer", "bullets", "content"):
+        if getattr(record, name) not in (None, []):
+            issues.append(
+                _error(
+                    "E_FIELD_NOT_ALLOWED",
+                    f"Trường '{name}' không dùng cho bản ghi fact.",
+                    line_of(name) if name in field_lines else record.line_start,
+                    rid,
+                )
+            )
+    return issues
+
+
 def _validate_record(record, field_lines):
     issues = []
     rid = record.id or None
@@ -455,15 +578,41 @@ def _validate_record(record, field_lines):
                 rid,
             )
         )
-    elif record.kind not in {"qa", "doc"}:
+    elif record.kind not in {"qa", "doc", "fact"}:
         issues.append(
             _error(
                 "E_KIND",
-                f"Giá trị kind '{record.kind}' không hợp lệ; chỉ nhận qa hoặc doc.",
+                f"Giá trị kind '{record.kind}' không hợp lệ; chỉ nhận qa, doc "
+                "hoặc fact.",
                 line_of("kind"),
                 rid,
             )
         )
+
+    if record.status not in {"active", "archived"}:
+        issues.append(
+            _error(
+                "E_BAD_ENUM",
+                f"Trường 'status' nhận '{record.status}' không hợp lệ; "
+                "chỉ nhận active hoặc archived.",
+                line_of("status"),
+                rid,
+            )
+        )
+
+    if record.kind == "fact":
+        issues.extend(_validate_fact_record(record, field_lines, line_of))
+    else:
+        for name in FACT_ONLY_FIELDS:
+            if getattr(record, name) not in (None, ""):
+                issues.append(
+                    _error(
+                        "E_FIELD_NOT_ALLOWED",
+                        f"Trường '{name}' chỉ dùng cho bản ghi fact.",
+                        line_of(name),
+                        rid,
+                    )
+                )
 
     if not record.id:
         issues.append(
@@ -485,7 +634,7 @@ def _validate_record(record, field_lines):
             )
         )
 
-    if not record.topic:
+    if record.kind != "fact" and not record.topic:
         issues.append(
             _error(
                 "E_TOPIC",
@@ -494,7 +643,7 @@ def _validate_record(record, field_lines):
                 rid,
             )
         )
-    elif len(record.topic) > MAX_TOPIC:
+    elif record.topic and len(record.topic) > MAX_TOPIC:
         issues.append(
             _error(
                 "E_TOPIC",
@@ -722,17 +871,73 @@ def parse_source(path):
         if not record.id:
             continue
         if record.id in seen_ids:
+            prev_line, prev_kind = seen_ids[record.id]
+            code = (
+                "E_CONFLICT"
+                if record.kind == "fact" and prev_kind == "fact"
+                else "E_DUP_ID"
+            )
             issues.append(
                 _error(
-                    "E_DUP_ID",
-                    f"id '{record.id}' trùng với bản ghi ở dòng "
-                    f"{seen_ids[record.id]}.",
+                    code,
+                    f"id '{record.id}' trùng với bản ghi ở dòng {prev_line}.",
                     record.line_start,
                     record.id,
                 )
             )
         else:
-            seen_ids[record.id] = record.line_start
+            seen_ids[record.id] = (record.line_start, record.kind)
+
+    fact_ids = {record.id for record in records if record.kind == "fact"}
+    active_fact_ids = {
+        record.id
+        for record in records
+        if record.kind == "fact" and record.status == "active"
+    }
+    for record in records:
+        if record.kind not in {"qa", "doc"}:
+            continue
+        for name, text in (
+            ("answer", record.answer),
+            ("bullets", "\n".join(record.bullets)),
+            ("content", record.content),
+        ):
+            if not text:
+                continue
+            literal = text.replace("\\{{", "\x00")
+            for match in PLACEHOLDER_PATTERN.finditer(literal):
+                target = match.group(1)
+                if target not in fact_ids:
+                    issues.append(
+                        _error(
+                            "E_PLACEHOLDER_UNKNOWN",
+                            f"Placeholder '{{{{{target}}}}}' tham chiếu fact "
+                            "không tồn tại.",
+                            record.line_start,
+                            record.id,
+                        )
+                    )
+                elif target not in active_fact_ids:
+                    issues.append(
+                        _error(
+                            "E_PLACEHOLDER_UNKNOWN",
+                            f"Placeholder '{{{{{target}}}}}' tham chiếu fact "
+                            "đã archived.",
+                            record.line_start,
+                            record.id,
+                        )
+                    )
+            for pattern, label in STALE_PATTERNS:
+                if pattern.search(text):
+                    issues.append(
+                        _error(
+                            "E_STALE_VALUE",
+                            f"Còn giá trị cũ '{label}' trong nội dung bản ghi.",
+                            record.line_start,
+                            record.id,
+                        )
+                    )
+                    break
 
     source.records = records
     source.warnings = [issue for issue in issues if issue.severity == "warning"]
@@ -753,16 +958,18 @@ def validate_source(path):
     )
 
 
-def _format_qa_text(record):
+def _format_qa_text(record, answer=None, bullets=None):
     if record.content:
-        return record.content
+        return _resolve_placeholders(record.content, {})
     parts = [record.topic]
     if record.questions:
         parts.append("Câu hỏi: " + " | ".join(record.questions))
-    if record.answer:
-        parts.append("Trả lời: " + record.answer)
-    elif record.bullets:
-        parts.append("Trả lời: " + ", ".join(record.bullets))
+    answer = record.answer if answer is None else answer
+    bullets = record.bullets if bullets is None else bullets
+    if answer:
+        parts.append("Trả lời: " + answer)
+    elif bullets:
+        parts.append("Trả lời: " + ", ".join(bullets))
     return "\n".join(parts).strip()
 
 
@@ -780,18 +987,61 @@ def _metadata_for(record):
     return metadata
 
 
-def map_source(source_file):
-    """Map a validated ``SourceFile`` to ``DerivedSource``."""
+def _resolve_placeholders(text, facts_map):
+    """Replace ``{{id}}`` with the matching active fact value.
+
+    ``\\{{id}}`` is treated as the literal text ``{{id}}``.
+    """
+
+    literal = str(text).replace("\\{{", "\x00")
+
+    def _replace(match):
+        fact = facts_map.get(match.group(1))
+        return fact.value if fact else match.group(0)
+
+    resolved = PLACEHOLDER_PATTERN.sub(_replace, literal)
+    return resolved.replace("\x00", "{{")
+
+
+def map_source(source_file, facts_override=None):
+    """Map a validated ``SourceFile`` to ``DerivedSource``.
+
+    ``facts_override`` lets derived sources (for example computed course
+    aggregates) take precedence over the snapshot value stored in a fact, so
+    placeholders always serve the latest computed figure.
+    """
 
     qa_pairs = []
     kb_items = []
     rag_documents = []
+    facts = []
+    overrides = facts_override or {}
+    facts_map = {
+        record.id: Fact(
+            id=record.id,
+            label=record.label or "",
+            value=str(overrides.get(record.id, record.value or "")),
+            snapshot=record.snapshot,
+            source=record.source,
+            status=record.status,
+        )
+        for record in source_file.records
+        if record.kind == "fact"
+    }
+    facts = list(facts_map.values())
 
     for record in source_file.records:
+        if record.status == "archived":
+            continue
         if record.kind == "qa":
-            answer = record.answer
-            if not answer and record.bullets:
-                answer = ", ".join(record.bullets)
+            answer = _resolve_placeholders(record.answer, facts_map) \
+                if record.answer else None
+            bullets = [
+                _resolve_placeholders(bullet, facts_map)
+                for bullet in record.bullets
+            ]
+            if not answer and bullets:
+                answer = ", ".join(bullets)
             answer = answer or ""
             for question in record.questions:
                 normalized = normalize_text(question)
@@ -810,20 +1060,22 @@ def map_source(source_file):
                     id=record.id,
                     topic=record.topic,
                     questions=list(record.questions),
-                    answer=record.answer,
-                    answer_bullets=list(record.bullets) or None,
+                    answer=answer or None,
+                    answer_bullets=list(bullets) or None,
                 )
             )
             rag_documents.append(
                 RAGDocument(
-                    page_content=_format_qa_text(record),
+                    page_content=_format_qa_text(record, answer, bullets),
                     metadata=_metadata_for(record),
                 )
             )
         elif record.kind == "doc":
             rag_documents.append(
                 RAGDocument(
-                    page_content=record.content or "",
+                    page_content=_resolve_placeholders(
+                        record.content or "", facts_map
+                    ),
                     metadata=_metadata_for(record),
                 )
             )
@@ -837,17 +1089,25 @@ def map_source(source_file):
         qa_pairs=qa_pairs,
         kb_items=kb_items,
         rag_documents=rag_documents,
+        facts=facts,
         kb_hash=kb_hash,
     )
 
 
-def load_source(path, *, embedding_model="", chunk_size=500, chunk_overlap=50):
+def load_source(
+    path,
+    *,
+    embedding_model="",
+    chunk_size=500,
+    chunk_overlap=50,
+    facts_override=None,
+):
     """Validate and map a source file, or raise ``SourceValidationError``."""
 
     result = validate_source(path)
     if not result.valid or result.source_file is None:
         raise SourceValidationError(path, result.errors)
-    derived = map_source(result.source_file)
+    derived = map_source(result.source_file, facts_override=facts_override)
     source = result.source_file
     derived.signature = SourceSignature(
         path=source.path,
@@ -870,7 +1130,14 @@ def render_source(records):
         lines.append(RECORD_START)
         lines.append(f"kind: {record.kind}")
         lines.append(f"id: {record.id}")
-        lines.append(f"topic: {record.topic}")
+        if record.topic:
+            lines.append(f"topic: {record.topic}")
+        if record.label:
+            lines.append(f"label: {_single_line(record.label)}")
+        if record.value is not None:
+            lines.append(f"value: {_single_line(record.value)}")
+        if record.snapshot:
+            lines.append(f"snapshot: {record.snapshot}")
         if record.questions:
             lines.append("questions:")
             for question in record.questions:
@@ -887,6 +1154,8 @@ def render_source(records):
             lines.extend(_escape_block(record.content))
         if record.source:
             lines.append(f"source: {_single_line(record.source)}")
+        if record.status != "active":
+            lines.append(f"status: {record.status}")
         lines.append(RECORD_END)
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
