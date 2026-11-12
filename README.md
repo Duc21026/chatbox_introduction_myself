@@ -9,9 +9,11 @@ Trình duyệt
     │  http://localhost:3000
     ▼
 frontend (nginx)  ──/chat, /chat/stream──▶  backend (Flask :5000)
-                                               ├─ chatbot.txt (nguồn hợp nhất)
-                                               │    ├─ qa  → KB engine (answer/suggest/clarify)
+                                               ├─ chatbot.txt (qa/doc/fact viết tay)
+                                               │    ├─ qa + fact → KB engine (answer/suggest/clarify)
                                                │    └─ doc → RAG dự phòng
+                                               ├─ sources/courses.csv + aliases.txt → QA từng môn
+                                               ├─ inbox/ → vệ sinh → doc_index/
                                                ├─ doc_index/ (PDF, DOCX, XLSX, CSV, TXT, MD)
                                                ├─ session (shown_ids, last_query, level)
                                                └─ bge-m3 + FAISS
@@ -85,9 +87,12 @@ Biến môi trường được đặt trong `backend/.env` hoặc trong mục `e
 | `CHATBOT_EMBEDDING_MODEL` | `bge-m3` | Model embedding |
 | `CHATBOT_RELEVANCE_THRESHOLD` | `1.0` | Ngưỡng lọc đoạn không liên quan |
 | `CHATBOT_FUZZY_CUTOFF` | `80` | Ngưỡng khớp mờ với các bản ghi `qa` |
-| `CHATBOT_SOURCE_PATH` | `backend/data/chatbot.txt` | Tệp nguồn tri thức duy nhất |
+| `CHATBOT_SOURCE_PATH` | `backend/data/chatbot.txt` | Tệp nguồn viết tay duy nhất (`qa`/`doc`/`fact`) |
+| `CHATBOT_COURSES_PATH` | `backend/data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập |
+| `CHATBOT_ALIASES_PATH` | `backend/data/sources/aliases.txt` | Bí danh câu hỏi (vtp2, oop, ctdl…) |
+| `CHATBOT_INBOX_DIR` | `backend/data/inbox` | Thư mục chờ nạp PDF/DOCX/XLSX/CSV/TXT |
 | `CHATBOT_LEGACY_SOURCES` | `false` | Bật đọc `qa.txt`/`kb.json`/`backend/data/` để rollback tạm thời |
-| `CHATBOT_DATA_DIR` | `backend/data` | Thư mục tài liệu cũ (deprecated, chỉ dùng khi legacy) |
+| `CHATBOT_DATA_DIR` | `backend/data` | Thư mục dữ liệu mặc định (dùng khi legacy hoặc chạy CLI) |
 | `CHATBOT_QA_PATH` | `backend/qa.txt` | Tệp Q&A cũ (deprecated, chỉ dùng khi legacy) |
 | `CHATBOT_OLLAMA_BASE_URL` | `http://ollama:11434` | Địa chỉ Ollama trong mạng Docker |
 | `CHATBOT_CHUNK_SIZE` | `500` | Kích thước đoạn |
@@ -152,18 +157,30 @@ docker compose exec ollama nvidia-smi   # nếu có GPU
 
 ## Quản lý nguồn tri thức
 
-Backend đọc một tệp nguồn duy nhất `backend/data/chatbot.txt`, được bind mount vào container:
+Backend đọc **một tệp viết tay duy nhất** cùng các nguồn dữ liệu mở, tất cả được bind mount vào container:
 
 ```text
-backend/data/chatbot.txt → /app/backend/data/chatbot.txt
+backend/data/chatbot.txt            → /app/backend/data/chatbot.txt
+backend/data/sources/courses.csv    → /app/backend/data/sources/courses.csv
+backend/data/sources/aliases.txt    → /app/backend/data/sources/aliases.txt
+backend/data/inbox/                 → /app/backend/data/inbox/
 ```
 
-Sửa tệp trên máy host có hiệu lực ngay: backend tự phát hiện thay đổi và tạo lại chỉ mục khi cần, không cần khởi động lại. Nếu tệp mới không hợp lệ, backend giữ nguyên nguồn tốt gần nhất và ghi cảnh báo.
+Sửa tệp trên máy host có hiệu lực ngay: backend tự phát hiện thay đổi (mtime/kích thước/hash) và tạo lại chỉ mục khi cần, không cần khởi động lại. Nếu nguồn mới không hợp lệ, backend giữ nguyên nguồn tốt gần nhất và ghi cảnh báo.
 
-Định dạng rút gọn:
+Định dạng rút gọn (`fact` + placeholder + `status`):
 
 ```text
 CHATBOT-SOURCE v1
+
+=== RECORD ===
+kind: fact
+id: gpa-10
+label: GPA tích lũy (thang 10)
+value: 8.51
+snapshot: 2026-11-07
+source: bang-diem.pdf
+=== END ===
 
 === RECORD ===
 kind: qa
@@ -172,43 +189,56 @@ topic: Học tập
 questions:
 - GPA hiện tại của bạn là bao nhiêu?
 answer:
-GPA hiện tại là 8.30/10.0.
-bullets:
-- GPA xét chuyên ngành: 8.31/10.0
+GPA tích lũy của mình là {{gpa-10}} / 10.
+status: active
 === END ===
 ```
 
-`kind: qa` được dùng cho KB engine, khớp mờ và RAG; `kind: doc` chỉ dùng cho RAG. Đặc tả đầy đủ ở `specs/005-unified-text-source/contracts/source-format.md`.
+- `kind: qa` dùng cho KB engine, khớp mờ và RAG; `kind: doc` chỉ dùng cho RAG; `kind: fact` là một giá trị có tên, được tham chiếu bằng `{{id}}` trong `answer`/`bullets`/`content`.
+- `status: archived` loại bản ghi khỏi KB/fuzzy/RAG/menu mà không xoá khỏi tệp.
+- Mọi số liệu học tập nằm trong `sources/courses.csv`; GPA, tổng tín chỉ, số học phần, GPA xét chuyên ngành và môn cao/thấp nhất được **tính ra** từ bảng này (lệch với fact → cảnh báo `W_CONFLICT`).
+- `sources/aliases.txt` và cột `aliases` của `courses.csv` mở rộng câu hỏi: `vtp2`, `oop`, `ctdl`… trỏ về tên môn chuẩn.
+- Tệp trong `data/inbox/` được nạp vào chỉ mục phái sinh sau khi vệ sinh; không ghi ngược vào `chatbot.txt`.
 
-Kiểm tra và chuyển đổi dữ liệu cũ:
+Đặc tả đầy đủ: `specs/007-unify-data-facts/contracts/`.
+
+Kiểm tra toàn bộ nguồn (không cần Ollama):
 
 ```bash
 docker compose exec backend python backend/scripts/manage_docs.py validate
-docker compose exec backend python backend/scripts/manage_docs.py migrate \
-  --from-data backend/data --qa backend/qa.txt --kb backend/kb.json \
-  --to backend/data/chatbot.txt
+docker compose exec backend python backend/scripts/manage_docs.py validate --json
 ```
 
-Thêm, thay thế, xóa hoặc hỏi thử:
+Mã lỗi mới: `E_PLACEHOLDER_UNKNOWN` (placeholder không tồn tại/đã archived), `E_PLACEHOLDER` (tệp inbox còn `[...]`), `E_NOISE` (`nan`/`Unnamed`/`about:blank`), `E_CONFLICT`, `E_STALE_VALUE`, `E_BAD_CSV`/`E_BAD_VALUE`/`E_BAD_ENUM`/`E_MISSING_FIELD`/`E_FIELD_NOT_ALLOWED`; cảnh báo `W_CONFLICT`. Lệnh ghi dừng và không ghi gì khi có lỗi.
+
+Thêm dữ liệu nhanh (không sửa code):
 
 ```bash
-docker cp /tmp/nghi-phep.txt chatbot-backend:/tmp/nghi-phep.txt
-docker compose exec backend python backend/scripts/manage_docs.py add /tmp/nghi-phep.txt --name nghi-phep.txt
+# Thêm/cập nhật một fact
+docker compose exec backend python backend/scripts/manage_docs.py add fact \
+  --id graduation --label "Tốt nghiệp dự kiến" --value "tháng 8/2028"
 
-docker compose exec backend python backend/scripts/manage_docs.py list
-docker compose exec backend python backend/scripts/manage_docs.py delete nghi-phep.txt
-docker compose exec backend python backend/scripts/manage_docs.py ask "nhân viên được nghỉ bao nhiêu ngày phép?" --debug
+# Thêm một chủ đề hỏi-đáp mới (menu chủ đề tự cập nhật)
+docker compose exec backend python backend/scripts/manage_docs.py add qa \
+  --topic "Sở thích" --q "Bạn thích làm gì khi rảnh?" \
+  --a "Mình thích đọc tài liệu về AI và chạy thử các mô hình nhỏ."
+
+# Thêm một môn vào courses.csv; GPA/tổng tín chỉ tự đổi
+docker compose exec backend python backend/scripts/manage_docs.py add course \
+  --code CSC90001 --name "Môn học thử nghiệm" --credits 3 --score10 9.5 \
+  --counts-major yes
 ```
 
-Nạp tài liệu PDF/DOCX/XLSX/CSV/TXT/MD vào chỉ mục phái sinh:
+Nạp tài liệu từ `inbox/` vào chỉ mục phái sinh:
 
 ```bash
-docker compose exec backend python backend/scripts/manage_docs.py ingest backend/data --recursive
+docker compose exec backend python backend/scripts/manage_docs.py ingest inbox/
+docker compose exec backend python backend/scripts/manage_docs.py ingest inbox/ten.pdf
 docker compose exec backend python backend/scripts/manage_docs.py list --json
 docker compose exec backend python backend/scripts/manage_docs.py remove old-cv.pdf
 ```
 
-`ingest` chỉ đọc tệp nguồn và ghi `backend/doc_index/`; `remove` chỉ xoá khỏi chỉ mục, không xoá tệp gốc. Lần nạp lại chỉ xử lý tệp/đoạn thay đổi. Dùng `--full` để tính lại toàn bộ vector. Rollback chỉ mục bằng cách dừng backend, xoá `backend/doc_index/`, rồi chạy lại `ingest` (hoặc chạy không có tài liệu).
+`ingest inbox/` chỉ nạp tệp mới/thay đổi (SHA-256), từ chối tệp còn placeholder/rác kèm mã lỗi, và không ghi vào `chatbot.txt`. Rollback chỉ mục bằng cách dừng backend, xoá `backend/doc_index/`, rồi chạy lại `ingest`.
 
 Thao tác ghi dùng tệp tạm rồi thay thế nguyên tử. `ask --debug` chỉ dành cho người vận hành. Để rollback tạm thời về nguồn cũ, đặt `CHATBOT_LEGACY_SOURCES=true` rồi tạo lại backend.
 
@@ -310,7 +340,10 @@ docker compose down -v                # dừng và xóa volume (mất model Olla
 |-----------|---------|
 | `frontend/` | Giao diện React: chat, Markdown, code copy, theme, cuộc trò chuyện trong phiên |
 | `backend/` | Dịch vụ Python: API, KB engine, RAG, quản lý nguồn, đánh giá, kiểm thử |
-| `backend/data/chatbot.txt` | Nguồn tri thức hợp nhất duy nhất (`CHATBOT-SOURCE v1`) |
+| `backend/data/chatbot.txt` | Nguồn viết tay duy nhất: `kind: qa|doc|fact`, placeholder `{{id}}`, `status` |
+| `backend/data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập (tự sinh QA + số tổng hợp) |
+| `backend/data/sources/aliases.txt` | Bí danh câu hỏi (`vtp2`, `oop`, `ctdl`…) |
+| `backend/data/inbox/` | Tệp chờ nạp vào chỉ mục RAG |
 | `backend/Dockerfile` | Image backend Python 3.11 |
 | `frontend/Dockerfile` | Build React rồi phục vụ bằng nginx |
 | `frontend/nginx.conf` | SPA fallback + proxy `/chat` sang backend |

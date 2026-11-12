@@ -16,7 +16,7 @@ topic: Học tập
 questions:
 - GPA của bạn là bao nhiêu?
 answer:
-GPA hiện tại là 8.30 / 10.
+GPA hiện tại là 8.51 / 10.
 === END ===
 
 === RECORD ===
@@ -48,6 +48,9 @@ def _prepare(tmp_path, monkeypatch):
     config = dataclasses.replace(
         chatbox.config,
         source_path=str(source),
+        courses_path=str(tmp_path / "missing-courses.csv"),
+        aliases_path=str(tmp_path / "missing-aliases.txt"),
+        inbox_dir=str(tmp_path / "missing-inbox"),
         legacy_sources=False,
         qa_path=str(Path(tmp_path) / "missing-qa.txt"),
         kb_path=str(Path(tmp_path) / "missing-kb.json"),
@@ -76,7 +79,7 @@ def test_chat_answers_from_unified_source(tmp_path, monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["type"] == "answer"
-    assert "8.30" in payload["response"]
+    assert "8.51" in payload["response"]
 
 
 def test_chat_answers_doc_question_from_unified_source(tmp_path, monkeypatch):

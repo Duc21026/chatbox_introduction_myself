@@ -72,3 +72,34 @@ def test_clarify_payload_never_says_khong_biet():
         assert "không biết" not in payload["message"].lower()
         assert payload["message"]
     assert clarify_payload(3, ["A"], ["B?"])["topics"] == []
+
+
+def test_muc_tieu_gets_multiple_suggestions():
+    from backend.text_normalization import normalize_query
+    from backend.suggestions import build_suggestions
+
+    candidates = [
+        {
+            "source": "kb", "item_id": "muc-tieu-hoc-bong",
+            "topic": "Mục tiêu", "question": "Mục tiêu học bổng của bạn là gì?",
+            "norm": "mục tiêu học bổng của bạn là gì?", "score": 0.85,
+            "question_count": 4, "answer": "…", "answer_bullets": None,
+        },
+        {
+            "source": "kb", "item_id": "muc-tieu-ielts",
+            "topic": "Mục tiêu", "question": "Mục tiêu IELTS của bạn?",
+            "norm": "mục tiêu ielts của bạn?", "score": 0.8,
+            "question_count": 3, "answer": "…", "answer_bullets": None,
+        },
+        {
+            "source": "kb", "item_id": "dinh-huong-nghe-nghiep",
+            "topic": "Mục tiêu", "question": "Định hướng nghề nghiệp của bạn?",
+            "norm": "định hướng nghề nghiệp của bạn?", "score": 0.7,
+            "question_count": 3, "answer": "…", "answer_bullets": None,
+        },
+    ]
+    query_norm = normalize_query("mục tiêu")
+
+    suggestions = build_suggestions(query_norm, candidates)
+    assert len(suggestions) >= 2
+    assert any("học bổng" in s["question"] for s in suggestions)

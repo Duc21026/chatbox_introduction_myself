@@ -4,7 +4,7 @@
       "id": "Q01",
       "question": "GPA hiện tại của bạn là bao nhiêu?",
       "category": "direct",
-      "expected_answer": "8.30",
+      "expected_answer": "8.51",
       "expected_refusal": false
     },
     {
@@ -39,7 +39,7 @@
       "id": "Q06",
       "question": "Điểm trung bình tích lũy của bạn đạt bao nhiêu?",
       "category": "paraphrase",
-      "expected_answer": "8.30",
+      "expected_answer": "8.51",
       "expected_refusal": false
     },
     {
@@ -53,14 +53,14 @@
       "id": "Q08",
       "question": "Bạn đã tích lũy được bao nhiêu tín chỉ rồi?",
       "category": "paraphrase",
-      "expected_answer": "62",
+      "expected_answer": "87",
       "expected_refusal": false
     },
     {
       "id": "Q09",
       "question": "gpa cua ban la bao nhieu?",
       "category": "no_diacritics",
-      "expected_answer": "8.30",
+      "expected_answer": "8.51",
       "expected_refusal": false
     },
     {
@@ -81,7 +81,7 @@
       "id": "Q12",
       "question": "Anh muốn biết môn nào bạn học tốt nhất?",
       "category": "pronoun_variant",
-      "expected_answer": "Đại số tuyến tính và Vi tích phân 2",
+      "expected_answer": "Đại số tuyến tính, Vi tích phân 2",
       "expected_refusal": false
     },
     {

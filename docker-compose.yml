@@ -56,6 +56,9 @@ services:
     environment:
       CHATBOT_OLLAMA_BASE_URL: http://ollama:11434
       CHATBOT_SOURCE_PATH: backend/data/chatbot.txt
+      CHATBOT_COURSES_PATH: backend/data/sources/courses.csv
+      CHATBOT_ALIASES_PATH: backend/data/sources/aliases.txt
+      CHATBOT_INBOX_DIR: backend/data/inbox
       CHATBOT_LEGACY_SOURCES: "false"
       CHATBOT_DOC_INDEX_DIR: backend/doc_index
       CHATBOT_QUERY_REWRITE: "off"

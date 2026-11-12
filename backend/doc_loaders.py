@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -23,6 +24,35 @@ SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".xlsx", ".csv", ".txt", ".md", ".doc"}
 DEFAULT_MAX_BYTES = 20 * 1024 * 1024
 DEFAULT_CHUNK_SIZE = 500
 DEFAULT_CHUNK_OVERLAP = 50
+
+_ABOUT_BLANK = re.compile(r"about:blank\s*\d+\s*/\s*\d+", re.IGNORECASE)
+_NOISE_FLOAT = re.compile(r"(\d+\.\d{1,4})\d{2,}")
+_UNNAMED_COLUMN = re.compile(r"^Unnamed(?::\s*\d+)?$", re.IGNORECASE)
+
+
+def _trim_noise_float(match):
+    value = match.group(1)
+    if "." in value:
+        value = value.rstrip("0").rstrip(".")
+    return value or match.group(1)
+
+
+def clean_noise(text: str) -> str:
+    """Remove extraction noise: ``about:blank`` footers, float artifacts and
+    consecutive duplicate lines (repeated headers/footers)."""
+
+    text = _ABOUT_BLANK.sub(" ", str(text))
+    text = _NOISE_FLOAT.sub(_trim_noise_float, text)
+    lines = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            lines.append(line)
+            continue
+        if lines and lines[-1].strip() == stripped:
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
 
 
 class DocLoadError(RuntimeError):
@@ -186,8 +216,10 @@ def _rows_to_blocks(rows: Iterable[tuple], sheet: Optional[str], type_name: str)
     for row_index, row in enumerate(rows, start=1):
         parts = []
         for column, value in row:
+            if _UNNAMED_COLUMN.match(str(column).strip()):
+                continue
             text = str(value).strip()
-            if not text or text.lower() == "nan":
+            if not text or text.lower() in {"nan", "none"}:
                 continue
             parts.append(f"{column}: {text}")
         if not parts:
@@ -327,16 +359,26 @@ def extract_blocks(path: str) -> list[Block]:
 
     type_name = _check_file(path)
     if type_name == "pdf":
-        return _pdf_blocks(path)
-    if type_name == "docx":
-        return _docx_blocks(path)
-    if type_name == "doc":
-        return _doc_blocks(path)
-    if type_name == "xlsx":
-        return _xlsx_blocks(path)
-    if type_name == "csv":
-        return _csv_blocks(path)
-    return _text_blocks(path, type_name)
+        blocks = _pdf_blocks(path)
+    elif type_name == "docx":
+        blocks = _docx_blocks(path)
+    elif type_name == "doc":
+        blocks = _doc_blocks(path)
+    elif type_name == "xlsx":
+        blocks = _xlsx_blocks(path)
+    elif type_name == "csv":
+        blocks = _csv_blocks(path)
+    else:
+        blocks = _text_blocks(path, type_name)
+
+    cleaned = []
+    for block in blocks:
+        text = clean_noise(block.text or "")
+        if not text:
+            continue
+        block.text = text
+        cleaned.append(block)
+    return cleaned
 
 
 def _split_text(text: str, chunk_size: int, overlap: int) -> list[str]:

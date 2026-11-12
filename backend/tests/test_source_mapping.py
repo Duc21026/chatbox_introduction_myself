@@ -13,10 +13,10 @@ questions:
 - GPA của bạn là bao nhiêu?
 - Điểm trung bình của bạn?
 answer:
-GPA hiện tại là 8.30 / 10.
+GPA hiện tại là 8.51 / 10.
 bullets:
-- GPA 8.30/10
-- 62 tín chỉ
+- GPA 8.51/10
+- 87 tín chỉ
 source: BẢNG ĐIỂM.pdf#page=2
 === END ===
 
@@ -56,7 +56,7 @@ def test_qa_record_maps_to_kb_qa_and_rag(tmp_path):
     assert len(derived.qa_pairs) == 3
     gpa_pair = derived.qa_pairs[0]
     assert gpa_pair.normalized_question == "gpa của bạn là bao nhiêu?"
-    assert gpa_pair.answer == "GPA hiện tại là 8.30 / 10."
+    assert gpa_pair.answer == "GPA hiện tại là 8.51 / 10."
     assert gpa_pair.record_id == "gpa"
 
     qa_documents = [
@@ -66,7 +66,7 @@ def test_qa_record_maps_to_kb_qa_and_rag(tmp_path):
     ]
     assert qa_documents[0].metadata["record_id"] == "gpa"
     assert qa_documents[0].metadata["page"] == 2
-    assert "GPA hiện tại là 8.30 / 10." in qa_documents[0].page_content
+    assert "GPA hiện tại là 8.51 / 10." in qa_documents[0].page_content
 
 
 def test_doc_record_maps_only_to_rag(tmp_path):
@@ -103,7 +103,7 @@ def test_kb_hash_is_stable_and_changes_with_kb_content(tmp_path):
 
     path = Path(tmp_path) / "chatbot.txt"
     path.write_text(
-        SOURCE.replace("GPA hiện tại là 8.30 / 10.", "GPA hiện tại là 8.40 / 10."),
+        SOURCE.replace("GPA hiện tại là 8.51 / 10.", "GPA hiện tại là 8.40 / 10."),
         encoding="utf-8",
     )
     changed = source_format.load_source(path)

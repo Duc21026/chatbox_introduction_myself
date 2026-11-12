@@ -3,7 +3,7 @@
 import re
 import unicodedata
 
-NORMALIZER_VERSION = "1"
+NORMALIZER_VERSION = "2"
 
 _REPEATED_CHARACTER = re.compile(r"(.)\1{2,}", re.DOTALL)
 _REPEATED_PUNCTUATION = re.compile(r"([!?.,])\1+")
@@ -50,6 +50,27 @@ _FILLER_WORDS = frozenset(
 
 # Keep Unicode letters, digits, Vietnamese punctuation ?!.,
 _KEEP_CHARS = re.compile(r"[^\w\s?!.,]", re.UNICODE)
+
+# Alias map (viết tắt → tên chuẩn) registered by the alias module at load
+# time; consulted by normalize_query as the final expansion step.
+_ALIAS_MAP: dict[str, str] = {}
+
+
+def register_aliases(mapping) -> None:
+    """Install the global alias map used by ``normalize_query``."""
+
+    _ALIAS_MAP.clear()
+    if mapping:
+        _ALIAS_MAP.update(mapping)
+
+
+def _expand_aliases(text: str) -> str:
+    if not _ALIAS_MAP or not text:
+        return text
+    for alias in sorted(_ALIAS_MAP, key=len, reverse=True):
+        if alias and alias in text:
+            text = text.replace(alias, _ALIAS_MAP[alias])
+    return text
 
 
 def normalize_text(text, lowercase=True):
@@ -133,6 +154,9 @@ def normalize_query(text: str) -> str:
     # Step 9 — collapse whitespace
     text = _WHITESPACE.sub(" ", text).strip()
 
+    # Step 9b — alias expansion (viết tắt → tên chuẩn, ví dụ vtp2 → vi tích phân 2)
+    text = _expand_aliases(text)
+
     # Step 10 — guard
     if not any(c.isalnum() for c in text):
         return ""
@@ -180,4 +204,4 @@ def token_overlap(query, text) -> float:
     return len(query_tokens & text_tokens) / len(query_tokens)
 
 
-NORMALIZER_VERSION = "1"
+NORMALIZER_VERSION = "2"
