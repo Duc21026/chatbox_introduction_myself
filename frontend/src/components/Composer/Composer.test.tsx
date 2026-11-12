@@ -16,7 +16,19 @@ const sendMock = vi.mocked(sendMessage);
 describe("Composer", () => {
   beforeEach(() => {
     sendMock.mockReset();
-    sendMock.mockResolvedValue({ mode: "complete", content: "Trả lời" });
+    sendMock.mockResolvedValue({
+      mode: "complete",
+      content: "Trả lời",
+      response: {
+        type: "answer",
+        session_id: "s-1",
+        response: "Trả lời",
+        score: 0.9,
+        source: "kb:test",
+        sources: [],
+        actions: [],
+      },
+    });
     useChatStore.getState().resetSession();
   });
 

@@ -109,4 +109,4 @@ def test_chat_answers_doc_question_from_unified_source(tmp_path, monkeypatch):
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["type"] == "answer"
-    assert "Học bổng" in payload["response"]
+    assert "học bổng" in payload["response"].lower()

@@ -3,7 +3,12 @@ import { create } from "zustand";
 import {
   ChatApiError,
   isChatApiError,
+  sendAction as sendChatAction,
   sendMessage as sendChatMessage,
+  type Action,
+  type ChatResponse,
+  type SourceRef,
+  type Suggestion,
 } from "../lib/chatClient";
 import {
   applyTheme,
@@ -29,6 +34,15 @@ export interface Message {
   status: MessageStatus;
   error: string | null;
   createdAt: number;
+  sessionId?: string;
+  responseType?: ChatResponse["type"];
+  suggestions?: Suggestion[];
+  topics?: string[];
+  examples?: string[];
+  actions?: Action[];
+  sources?: SourceRef[];
+  source?: string | null;
+  score?: number | null;
 }
 
 export interface Conversation {
@@ -36,6 +50,12 @@ export interface Conversation {
   title: string;
   messages: Message[];
   createdAt: number;
+  sessionId: string;
+}
+
+export interface ActionPayload {
+  topic?: string;
+  label?: string;
 }
 
 interface ChatState {
@@ -46,6 +66,7 @@ interface ChatState {
   themeMode: ThemeMode;
   resolvedTheme: ResolvedTheme;
   sendMessage: (text: string) => Promise<void>;
+  sendAction: (action: string, payload?: ActionPayload) => Promise<void>;
   retryMessage: (messageId: string) => Promise<void>;
   stopStreaming: () => void;
   newConversation: () => void;
@@ -65,6 +86,10 @@ export function createId(): string {
     return crypto.randomUUID();
   }
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function createSessionId(): string {
+  return `s-${createId().replace(/[^a-zA-Z0-9]/g, "").slice(0, 24)}`;
 }
 
 export function titleFromQuestion(question: string): string {
@@ -87,6 +112,24 @@ function newMessage(
     status,
     error: null,
     createdAt: Date.now(),
+  };
+}
+
+function responsePatch(response: ChatResponse): Partial<Message> {
+  return {
+    content: response.response,
+    sessionId: response.session_id,
+    responseType: response.type,
+    suggestions: response.type === "suggest" ? response.suggestions : [],
+    topics: response.type === "clarify" ? response.topics : [],
+    examples:
+      response.type === "clarify" || response.type === "suggest"
+        ? response.examples ?? []
+        : [],
+    actions: response.actions ?? [],
+    sources: response.sources ?? [],
+    source: response.source ?? null,
+    score: response.score ?? null,
   };
 }
 
@@ -117,48 +160,50 @@ export const useChatStore = create<ChatState>((set, get) => {
     }));
   };
 
-  const runAnswer = async (
+  const updateConversationSession = (
+    conversationId: string,
+    sessionId: string,
+  ) => {
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === conversationId
+          ? { ...conversation, sessionId }
+          : conversation,
+      ),
+    }));
+  };
+
+  const runRequest = async (
     conversationId: string,
     assistantId: string,
-    question: string,
+    request: { question?: string; action?: string; topic?: string; label?: string },
   ) => {
     const controller = new AbortController();
     activeController = controller;
     set({ isStreaming: true });
 
-    try {
-      const result = await sendChatMessage(question, {
-        signal: controller.signal,
-        onChunk: (chunk) => {
-          set((state) => ({
-            conversations: state.conversations.map((conversation) =>
-              conversation.id === conversationId
-                ? {
-                    ...conversation,
-                    messages: conversation.messages.map((message) =>
-                      message.id === assistantId
-                        ? { ...message, content: message.content + chunk }
-                        : message,
-                    ),
-                  }
-                : conversation,
-            ),
-          }));
-        },
-      });
+    const conversation =
+      get().conversations.find((item) => item.id === conversationId) ?? null;
+    const sessionId = conversation?.sessionId;
 
-      if (result.mode === "complete") {
-        updateMessage(conversationId, assistantId, {
-          content: result.content,
-          status: result.interrupted ? "interrupted" : "complete",
-          error: null,
-        });
-      } else {
-        updateMessage(conversationId, assistantId, {
-          status: result.interrupted ? "interrupted" : "complete",
-          error: null,
-        });
-      }
+    try {
+      const result = request.action
+        ? await sendChatAction(request.action, {
+            signal: controller.signal,
+            sessionId,
+            topic: request.topic,
+          })
+        : await sendChatMessage(request.question ?? "", {
+            signal: controller.signal,
+            sessionId,
+          });
+
+      updateMessage(conversationId, assistantId, {
+        ...responsePatch(result.response),
+        status: "complete",
+        error: null,
+      });
+      updateConversationSession(conversationId, result.response.session_id);
     } catch (error) {
       if (isChatApiError(error) && error.code === "aborted") {
         updateMessage(conversationId, assistantId, {
@@ -209,6 +254,7 @@ export const useChatStore = create<ChatState>((set, get) => {
           title: titleFromQuestion(question),
           messages: [],
           createdAt: Date.now(),
+          sessionId: createSessionId(),
         };
         const created = conversation;
         set((current) => ({
@@ -242,7 +288,43 @@ export const useChatStore = create<ChatState>((set, get) => {
         activeConversationId: targetId,
       }));
 
-      await runAnswer(targetId, assistantMessage.id, question);
+      await runRequest(targetId, assistantMessage.id, { question });
+    },
+
+    sendAction: async (action, payload = {}) => {
+      if (get().isStreaming) {
+        return;
+      }
+      const conversationId = get().activeConversationId;
+      const conversation = conversationId
+        ? get().conversations.find((item) => item.id === conversationId)
+        : null;
+      if (!conversation) {
+        return;
+      }
+
+      const label =
+        payload.label ??
+        (action === "topic"
+          ? payload.topic ?? "Chủ đề"
+          : action === "rephrase"
+            ? "Hỏi lại cách khác"
+            : "Câu hỏi khác");
+      const userMessage = newMessage("user", label, "complete");
+      const assistantMessage = newMessage("assistant", "", "streaming");
+
+      set((current) => ({
+        conversations: current.conversations.map((item) =>
+          item.id === conversation.id
+            ? { ...item, messages: [...item.messages, userMessage, assistantMessage] }
+            : item,
+        ),
+      }));
+      await runRequest(conversation.id, assistantMessage.id, {
+        action,
+        topic: payload.topic,
+        label,
+      });
     },
 
     retryMessage: async (messageId) => {
@@ -269,8 +351,15 @@ export const useChatStore = create<ChatState>((set, get) => {
           content: "",
           status: "streaming",
           error: null,
+          suggestions: [],
+          topics: [],
+          examples: [],
+          actions: [],
+          sources: [],
         });
-        await runAnswer(conversation.id, messageId, userMessage.content);
+        await runRequest(conversation.id, messageId, {
+          question: userMessage.content,
+        });
         return;
       }
     },

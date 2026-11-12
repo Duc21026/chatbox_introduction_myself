@@ -1,7 +1,7 @@
+import type { ChatResponse } from "./chatTypes";
 import { getApiBaseUrl } from "./config";
-import { parseSseEvent } from "./streamParser";
 
-export type { StreamEvent } from "./streamParser";
+export type { ChatResponse, ResponseType, Suggestion, Action, SourceRef } from "./chatTypes";
 
 export type ChatErrorCode =
   | "invalid-input"
@@ -26,12 +26,16 @@ export class ChatApiError extends Error {
 
 export interface SendOptions {
   signal?: AbortSignal;
+  sessionId?: string;
+  action?: string;
+  topic?: string;
   onChunk?: (text: string) => void;
 }
 
 export interface SendResult {
-  mode: "stream" | "complete";
+  mode: "complete";
   content: string;
+  response: ChatResponse;
   interrupted?: boolean;
 }
 
@@ -90,16 +94,21 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function responseContent(payload: unknown): string | null {
+function parseChatResponse(payload: unknown): ChatResponse | null {
   if (
-    payload !== null &&
-    typeof payload === "object" &&
-    "response" in payload &&
-    typeof (payload as { response: unknown }).response === "string"
+    payload === null ||
+    typeof payload !== "object" ||
+    !("type" in payload) ||
+    !("session_id" in payload) ||
+    !("response" in payload)
   ) {
-    return (payload as { response: string }).response;
+    return null;
   }
-  return null;
+  const type = (payload as { type: unknown }).type;
+  if (type !== "answer" && type !== "suggest" && type !== "clarify") {
+    return null;
+  }
+  return payload as ChatResponse;
 }
 
 async function errorFromResponse(response: Response): Promise<ChatApiError> {
@@ -117,7 +126,7 @@ async function errorFromResponse(response: Response): Promise<ChatApiError> {
       true,
     );
   }
-  if (response.status === 400) {
+  if (response.status === 400 || response.status === 422) {
     return new ChatApiError(
       "client",
       "Câu hỏi chưa hợp lệ. Vui lòng nhập lại.",
@@ -131,11 +140,61 @@ async function errorFromResponse(response: Response): Promise<ChatApiError> {
   );
 }
 
-async function requestComplete(
-  baseUrl: string,
+function requestBody(
+  message: string | undefined,
+  options: SendOptions,
+): Record<string, string> {
+  const body: Record<string, string> = {};
+  if (message) {
+    body.message = message;
+  }
+  if (options.sessionId) {
+    body.session_id = options.sessionId;
+  }
+  if (options.action) {
+    body.action = options.action;
+  }
+  if (options.topic) {
+    body.topic = options.topic;
+  }
+  return body;
+}
+
+export async function sendMessage(
   message: string,
+  options: SendOptions = {},
+): Promise<SendResult> {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new ChatApiError(
+      "invalid-input",
+      "Vui lòng nhập câu hỏi trước khi gửi.",
+      false,
+    );
+  }
+
+  return requestChat(trimmed, options);
+}
+
+export async function sendAction(
+  action: string,
+  options: SendOptions = {},
+): Promise<SendResult> {
+  const normalized = action.trim().toLowerCase();
+  if (!normalized) {
+    throw new ChatApiError("invalid-input", "Hành động không hợp lệ.", false);
+  }
+  if (normalized === "topic" && !options.topic?.trim()) {
+    throw new ChatApiError("invalid-input", "Thiếu chủ đề đã chọn.", false);
+  }
+  return requestChat(undefined, { ...options, action: normalized });
+}
+
+async function requestChat(
+  message: string | undefined,
   options: SendOptions,
 ): Promise<SendResult> {
+  const baseUrl = getApiBaseUrl();
   let response: Response;
   try {
     response = await fetchWithTimeout(`${baseUrl}/chat`, {
@@ -144,7 +203,7 @@ async function requestComplete(
         Accept: "application/json",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(requestBody(message, options)),
       signal: options.signal,
     });
   } catch (error) {
@@ -169,161 +228,17 @@ async function requestComplete(
     throw await errorFromResponse(response);
   }
 
-  const content = responseContent(await readJson(response));
-  if (content === null) {
+  const parsed = parseChatResponse(await readJson(response));
+  if (parsed === null) {
     throw new ChatApiError(
       "server",
       "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.",
       true,
     );
   }
-  return { mode: "complete", content };
-}
-
-async function consumeStream(
-  response: Response,
-  options: SendOptions,
-): Promise<SendResult> {
-  if (!response.body) {
-    throw new ChatApiError(
-      "interrupted",
-      "Kết nối bị ngắt trước khi có câu trả lời. Vui lòng thử lại.",
-      true,
-    );
+  const content = parsed.response;
+  if (content) {
+    options.onChunk?.(content);
   }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let content = "";
-  let finished = false;
-
-  const handleLine = (line: string) => {
-    const event = parseSseEvent(line);
-    if (!event) {
-      return;
-    }
-    if (event.type === "chunk") {
-      content += event.content;
-      options.onChunk?.(event.content);
-      return;
-    }
-    if (event.type === "done") {
-      finished = true;
-      return;
-    }
-    if (event.type === "error") {
-      throw new ChatApiError(
-        "server",
-        event.message || "Máy chủ gặp lỗi khi trả lời. Vui lòng thử lại.",
-        true,
-      );
-    }
-  };
-
-  try {
-    while (!finished) {
-      const { value, done } = await reader.read();
-      if (done) {
-        buffer += decoder.decode();
-        break;
-      }
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        handleLine(line);
-        if (finished) {
-          break;
-        }
-      }
-    }
-    if (!finished && buffer.trim()) {
-      handleLine(buffer);
-    }
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new ChatApiError("aborted", "Đã dừng trả lời.", false);
-    }
-    if (error instanceof ChatApiError) {
-      throw error;
-    }
-    throw new ChatApiError(
-      "interrupted",
-      "Kết nối bị ngắt giữa chừng. Vui lòng thử lại.",
-      true,
-    );
-  } finally {
-    try {
-      await reader.cancel();
-    } catch {
-      // The stream may already be closed.
-    }
-  }
-
-  return { mode: "stream", content, interrupted: !finished };
-}
-
-export async function sendMessage(
-  message: string,
-  options: SendOptions = {},
-): Promise<SendResult> {
-  const trimmed = message.trim();
-  if (!trimmed) {
-    throw new ChatApiError(
-      "invalid-input",
-      "Vui lòng nhập câu hỏi trước khi gửi.",
-      false,
-    );
-  }
-
-  const baseUrl = getApiBaseUrl();
-
-  let response: Response;
-  try {
-    response = await fetchWithTimeout(`${baseUrl}/chat/stream`, {
-      method: "POST",
-      headers: {
-        Accept: "text/event-stream",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message: trimmed }),
-      signal: options.signal,
-    });
-  } catch (error) {
-    if (isAbortError(error)) {
-      throw new ChatApiError("aborted", "Đã dừng trả lời.", false);
-    }
-    if (isTimeoutError(error)) {
-      throw new ChatApiError(
-        "network",
-        "Máy chủ phản hồi quá lâu. Vui lòng thử lại.",
-        true,
-      );
-    }
-    return requestComplete(baseUrl, trimmed, options);
-  }
-
-  if ([404, 405, 501].includes(response.status)) {
-    return requestComplete(baseUrl, trimmed, options);
-  }
-
-  if (!response.ok) {
-    throw await errorFromResponse(response);
-  }
-
-  const contentType = response.headers.get("Content-Type") ?? "";
-  if (contentType.includes("application/json")) {
-    const content = responseContent(await readJson(response));
-    if (content === null) {
-      throw new ChatApiError(
-        "server",
-        "Máy chủ trả về dữ liệu không hợp lệ. Vui lòng thử lại.",
-        true,
-      );
-    }
-    return { mode: "complete", content };
-  }
-
-  return consumeStream(response, options);
+  return { mode: "complete", content, response: parsed };
 }

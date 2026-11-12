@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseSseEvent } from "./streamParser";
 
 describe("parseSseEvent", () => {
-  it("parses chunk, done, and error events", () => {
+  it("parses chunk, result, done, and error events", () => {
     expect(parseSseEvent('data: {"type":"chunk","content":"Xin"}')).toEqual({
       type: "chunk",
       content: "Xin",
@@ -12,6 +12,11 @@ describe("parseSseEvent", () => {
     expect(
       parseSseEvent('data: {"type":"error","message":"Lỗi"}'),
     ).toEqual({ type: "error", message: "Lỗi" });
+    expect(
+      parseSseEvent(
+        'data: {"type":"result","data":{"type":"suggest","session_id":"s-1","response":"Chọn"}}',
+      ),
+    ).toMatchObject({ type: "result" });
   });
 
   it("ignores comments, empty data, malformed JSON, and unknown types", () => {

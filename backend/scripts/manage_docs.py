@@ -61,6 +61,25 @@ def _build_parser():
 
     list_command = subparsers.add_parser("list", help="Liệt kê các nguồn")
     list_command.add_argument("--data-dir", default=None)
+    list_command.add_argument("--index-dir", default=None)
+    list_command.add_argument("--json", action="store_true", dest="as_json")
+
+    ingest = subparsers.add_parser(
+        "ingest", help="Nạp tài liệu vào chỉ mục phái sinh"
+    )
+    ingest.add_argument("path", nargs="?", default=None)
+    ingest.add_argument("--data-dir", default=None)
+    ingest.add_argument("--index-dir", default=None)
+    ingest.add_argument("--recursive", action="store_true")
+    ingest.add_argument("--full", action="store_true")
+    ingest.add_argument("--json", action="store_true", dest="as_json")
+
+    remove = subparsers.add_parser(
+        "remove", help="Xoá một tệp khỏi chỉ mục (giữ tệp nguồn)"
+    )
+    remove.add_argument("source_name")
+    remove.add_argument("--index-dir", default=None)
+    remove.add_argument("--json", action="store_true", dest="as_json")
 
     ask = subparsers.add_parser("ask", help="Hỏi chatbot")
     ask.add_argument("question")
@@ -93,34 +112,129 @@ def _print_result(result):
     return 1
 
 
+def _index_class():
+    try:
+        from backend.doc_index import DocIndex
+    except ImportError:
+        from doc_index import DocIndex
+    return DocIndex
+
+
+def _doc_index(args):
+    index_dir = getattr(args, "index_dir", None)
+    return _index_class()(index_dir=index_dir)
+
+
 def _run_ask(question, debug, data_dir):
     os.environ["CHATBOT_DATA_DIR"] = data_dir
-    import chatbox
+    try:
+        from backend.assistant import Assistant
+    except ImportError:
+        from assistant import Assistant
 
     try:
-        answer, diagnostic = chatbox.ask_ai_detailed(question)
+        response = Assistant(doc_searcher=_doc_index(args=None)).handle(question)
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
-    print(answer)
+    print(response.get("response", ""))
     if not debug:
         return 0
 
-    print(f"original_question: {diagnostic.original_question}")
-    print(f"normalized_question: {diagnostic.normalized_question}")
-    print(f"rewritten_question: {diagnostic.rewritten_question or '-'}")
-    print(f"sources: {', '.join(diagnostic.source_names) or '-'}")
-    for piece in diagnostic.pieces:
+    print(f"type: {response.get('type')}")
+    print(f"session_id: {response.get('session_id')}")
+    print(f"score: {response.get('score')}")
+    print(f"source: {response.get('source') or '-'}")
+    print(
+        "suggestions: "
+        + json.dumps(response.get("suggestions") or [], ensure_ascii=False)
+    )
+    print("topics: " + json.dumps(response.get("topics") or [], ensure_ascii=False))
+    print("sources: " + json.dumps(response.get("sources") or [], ensure_ascii=False))
+    return 0
+
+
+def _run_ingest(args):
+    index = _doc_index(args)
+    path = args.path or _data_dir(args)
+    try:
+        report = index.ingest(path, recursive=args.recursive, full=args.full)
+    except FileNotFoundError:
+        print(f"Đường dẫn không tồn tại: {path}", file=sys.stderr)
+        return 1
+    except Exception as exc:
+        print(f"Không nạp được tài liệu: {exc}", file=sys.stderr)
+        return 1
+
+    if args.as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        print(f"Nạp tài liệu từ {os.path.abspath(path)}")
+        for entry in report["added"]:
+            print(f"  thêm:     {entry['file']} ({entry['type']}, {entry['chunks']} đoạn)")
+        for entry in report["updated"]:
+            print(
+                f"  cập nhật: {entry['file']} ({entry['type']}, "
+                f"{entry['chunks']} đoạn, {entry.get('chunks_added', 0)} đoạn mới, "
+                f"{entry.get('chunks_reused', 0)} đoạn tái dùng)"
+            )
+        for entry in report["skipped"]:
+            print(f"  bỏ qua:   {entry['file']}")
+        for entry in report["failed"]:
+            print(f"  lỗi:      {entry['file']} — {entry['error']}")
+        stats = report["stats"]
         print(
-            "piece: "
-            f"source={piece['source_name']} "
-            f"chunk={piece['chunk_index']} "
-            f"score={piece['score']} "
-            f"excerpt={piece['excerpt']}"
+            f"\nTổng: {stats['files_total']} tệp | thêm {len(report['added'])} | "
+            f"cập nhật {len(report['updated'])} | bỏ qua {len(report['skipped'])} | "
+            f"lỗi {len(report['failed'])}"
         )
-    print(f"passed_threshold: {str(diagnostic.passed_threshold).lower()}")
-    print(f"outcome: {diagnostic.outcome}")
+        print(
+            f"Đoạn: +{stats['chunks_added']} mới, {stats['chunks_reused']} tái dùng, "
+            f"{stats['chunks_removed']} xoá | Vector đã tính: "
+            f"{stats['embeddings_computed']}"
+        )
+    return 2 if report["failed"] else 0
+
+
+def _run_list_docs(args):
+    try:
+        index = _doc_index(args)
+        rows = index.list_files(_data_dir(args))
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(json.dumps(rows, ensure_ascii=False, indent=2))
+    else:
+        for row in rows:
+            print(
+                f"{row['file']}\t{row.get('type') or ''}\t"
+                f"{row.get('status')}\t{row.get('chunks', 0)}"
+            )
+    return 0
+
+
+def _run_remove(args):
+    try:
+        index = _doc_index(args)
+        count = index.remove(args.source_name)
+    except Exception as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    if count is None:
+        print(f"Không có {args.source_name} trong chỉ mục.", file=sys.stderr)
+        return 1
+    if args.as_json:
+        print(
+            json.dumps(
+                {"file": args.source_name, "removed_chunks": count},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"Đã xoá {args.source_name} khỏi chỉ mục ({count} đoạn).")
     return 0
 
 
@@ -430,6 +544,15 @@ def main(argv=None):
 
     if args.command == "ask":
         return _run_ask(args.question, args.debug, data_dir)
+
+    if args.command == "ingest":
+        return _run_ingest(args)
+
+    if args.command == "remove":
+        return _run_remove(args)
+
+    if args.command == "list":
+        return _run_list_docs(args)
 
     from documents import add_source, delete_source, list_sources, replace_source
 

@@ -11,6 +11,7 @@ function conversation(id: string, title: string): Conversation {
     title,
     messages: [],
     createdAt: Date.now(),
+    sessionId: `s-${id}`,
   };
 }
 

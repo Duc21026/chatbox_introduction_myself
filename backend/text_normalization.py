@@ -137,3 +137,47 @@ def normalize_query(text: str) -> str:
     if not any(c.isalnum() for c in text):
         return ""
     return text
+
+
+_TOKEN_RE = re.compile(r"\w+", re.UNICODE)
+_SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
+
+
+def tokenize(text) -> list[str]:
+    """Return lowercase word tokens for matching/scoring."""
+
+    if not isinstance(text, str):
+        return []
+    normalized = normalize_text(text)
+    return _TOKEN_RE.findall(normalized)
+
+
+def word_count(text) -> int:
+    return len(tokenize(text))
+
+
+def split_sentences(text) -> list[str]:
+    """Split text into readable sentences, preserving source order."""
+
+    if not isinstance(text, str):
+        return []
+    parts = _SENTENCE_BOUNDARY.split(text)
+    sentences = []
+    for part in parts:
+        sentence = " ".join(part.split()).strip()
+        if sentence and any(character.isalnum() for character in sentence):
+            sentences.append(sentence)
+    return sentences
+
+
+def token_overlap(query, text) -> float:
+    """Fraction of query tokens that also occur in ``text`` (0..1)."""
+
+    query_tokens = set(tokenize(query))
+    if not query_tokens:
+        return 0.0
+    text_tokens = set(tokenize(text))
+    return len(query_tokens & text_tokens) / len(query_tokens)
+
+
+NORMALIZER_VERSION = "1"

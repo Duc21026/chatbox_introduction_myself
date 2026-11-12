@@ -57,12 +57,16 @@ services:
       CHATBOT_OLLAMA_BASE_URL: http://ollama:11434
       CHATBOT_SOURCE_PATH: backend/data/chatbot.txt
       CHATBOT_LEGACY_SOURCES: "false"
+      CHATBOT_DOC_INDEX_DIR: backend/doc_index
+      CHATBOT_QUERY_REWRITE: "off"
+      ENABLE_LLM_SUMMARY: "false"
       FLASK_ENV: production
       PYTHONUNBUFFERED: "1"
     volumes:
-      # The unified source is the only knowledge file mounted into the
-      # container. Hot edits are picked up using the source signature.
-      - ./backend/data/chatbot.txt:/app/backend/data/chatbot.txt
+      # Unified source is read-only; the derived document index is writable
+      # and must survive container rebuilds.
+      - ./backend/data:/app/backend/data:ro
+      - ./backend/doc_index:/app/backend/doc_index
     ports:
       - "5000:5000"           # expose for direct testing; nginx proxies in prod
     depends_on:

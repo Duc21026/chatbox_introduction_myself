@@ -8,10 +8,30 @@ vi.mock("./lib/chatClient", async (importOriginal) => {
 });
 
 import App from "./App";
-import { ChatApiError, sendMessage } from "./lib/chatClient";
+import {
+  ChatApiError,
+  sendMessage,
+  type ChatResponse,
+} from "./lib/chatClient";
 import { useChatStore } from "./store/chatStore";
 
 const sendMock = vi.mocked(sendMessage);
+
+function answer(content: string, session = "s-1"): ChatResponse {
+  return {
+    type: "answer",
+    session_id: session,
+    response: content,
+    score: 0.9,
+    source: "kb:test",
+    sources: [],
+    actions: [],
+  };
+}
+
+function result(content: string, session = "s-1") {
+  return { mode: "complete" as const, content, response: answer(content, session) };
+}
 
 async function sendQuestion(user: ReturnType<typeof userEvent.setup>, text: string) {
   await user.type(screen.getByLabelText("Câu hỏi"), text);
@@ -28,10 +48,7 @@ describe("App", () => {
 
   it("sends a question and shows the answer without reloading", async () => {
     const user = userEvent.setup();
-    sendMock.mockResolvedValueOnce({
-      mode: "complete",
-      content: "GPA hiện tại là 8.30",
-    });
+    sendMock.mockResolvedValueOnce(result("GPA hiện tại là 8.30"));
     render(<App />);
 
     expect(screen.getByText("Bạn muốn biết điều gì?")).toBeInTheDocument();
@@ -46,7 +63,7 @@ describe("App", () => {
     const user = userEvent.setup();
     sendMock
       .mockRejectedValueOnce(new ChatApiError("server", "Máy chủ gặp lỗi.", true))
-      .mockResolvedValueOnce({ mode: "complete", content: "Đã trả lời lại" });
+      .mockResolvedValueOnce(result("Đã trả lời lại"));
 
     render(<App />);
     await sendQuestion(user, "Câu hỏi lỗi");
@@ -63,8 +80,8 @@ describe("App", () => {
   it("keeps two conversations isolated when switching", async () => {
     const user = userEvent.setup();
     sendMock
-      .mockResolvedValueOnce({ mode: "complete", content: "Đáp án một" })
-      .mockResolvedValueOnce({ mode: "complete", content: "Đáp án hai" });
+      .mockResolvedValueOnce(result("Đáp án một", "s-1"))
+      .mockResolvedValueOnce(result("Đáp án hai", "s-2"));
 
     render(<App />);
     await sendQuestion(user, "Câu hỏi một");
@@ -85,7 +102,7 @@ describe("App", () => {
 
   it("returns to an empty workspace when the session resets", async () => {
     const user = userEvent.setup();
-    sendMock.mockResolvedValueOnce({ mode: "complete", content: "Đáp án" });
+    sendMock.mockResolvedValueOnce(result("Đáp án"));
     render(<App />);
     await sendQuestion(user, "Câu hỏi");
     await screen.findByText("Đáp án");
@@ -101,32 +118,27 @@ describe("App", () => {
   });
 
 
-  it("keeps streamed content when the theme changes mid-stream", async () => {
+  it("keeps content when the theme changes while a response is pending", async () => {
     const user = userEvent.setup();
     let finish: () => void = () => undefined;
-    const pending = new Promise<{ mode: "stream"; content: string }>(
-      (resolve) => {
-        finish = () => resolve({ mode: "stream", content: "Một phần" });
-      },
-    );
-    sendMock.mockImplementationOnce(async (_message, options) => {
-      options?.onChunk?.("Một phần");
-      return pending;
+    const pending = new Promise<ReturnType<typeof result>>((resolve) => {
+      finish = () => resolve(result("Một phần"));
     });
+    sendMock.mockImplementationOnce(() => pending);
 
     render(<App />);
     await sendQuestion(user, "Câu hỏi dài");
 
-    expect(await screen.findByText("Một phần")).toBeInTheDocument();
+    expect(screen.getByText("Đang soạn câu trả lời…")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Giao diện:/ }));
-
-    expect(screen.getByText("Một phần")).toBeInTheDocument();
     expect(useChatStore.getState().themeMode).toBe("light");
 
     await act(async () => {
       finish();
       await pending;
     });
+
+    expect(await screen.findByText("Một phần")).toBeInTheDocument();
   });
 
   it("changes the theme and exposes the current mode", async () => {

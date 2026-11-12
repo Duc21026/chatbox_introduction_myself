@@ -27,6 +27,8 @@ except ImportError:  # direct execution from backend/
 
 logger = logging.getLogger(__name__)
 
+# Legacy RAG helper only.  ``POST /chat`` uses assistant's answer/suggest/
+# clarify tiers and never returns this string.
 REFUSAL = "Tôi không biết"
 REPHRASE = "Bạn vui lòng nhập lại câu hỏi rõ ràng hơn."
 
@@ -673,6 +675,173 @@ def ask_ai_detailed(question):
     response = get_llm().invoke(_build_prompt(context, prepared.original))
     diagnostic.outcome = "answered"
     return response.content, diagnostic
+
+
+def _rag_doc_question(document):
+    source = str(document.metadata.get("source") or "tài liệu")
+    topic = str(document.metadata.get("topic") or "").strip()
+    if topic:
+        return f"Tài liệu {source} nói gì về {topic}?"
+    snippet = " ".join((document.page_content or "").split())[:80].strip()
+    return f"Tài liệu {source}: {snippet}?" if snippet else f"Tài liệu {source}"
+
+
+def retrieve_source_qa(question):
+    """Return prepared Q&A pairs from the unified source as candidates.
+
+    This keeps 005 source Q&A working without calling an LLM when embeddings
+    are unavailable or ``kb_engine`` has not been warmed up yet.
+    """
+    if not isinstance(question, str) or not normalize_text(question):
+        return []
+    try:
+        source = get_source()
+    except Exception:
+        return []
+    pairs = source.qa_pairs
+    if not pairs:
+        return []
+    counts = {}
+    for pair in pairs:
+        counts[pair.record_id] = counts.get(pair.record_id, 0) + 1
+    query = normalize_text(question)
+    hits = []
+    for pair in pairs:
+        score = fuzz.WRatio(query, pair.normalized_question) / 100.0
+        if score <= 0:
+            continue
+        hits.append(
+            {
+                "source": "kb",
+                "item_id": pair.record_id,
+                "topic": None,
+                "question": pair.question,
+                "norm": pair.normalized_question,
+                "score": round(score, 4),
+                "question_count": counts.get(pair.record_id, 1),
+                "answer": pair.answer,
+                "answer_bullets": None,
+            }
+        )
+    hits.sort(key=lambda hit: hit["score"], reverse=True)
+    return hits[:8]
+
+
+def retrieve_rag_documents(question, query_vec=None):
+    """Return 005 ``kind: doc`` snippets as structural candidates (no LLM).
+
+    Distances from FAISS are L2 over normalized vectors; convert them to
+    cosine-like scores with ``max(0, 1 - d*d/2)``.
+    """
+    if not isinstance(question, str) or not normalize_text(question):
+        return []
+    db = get_db()
+    if db is None:
+        return []
+
+    query = normalize_text(question)
+    try:
+        retrieved = db.similarity_search_with_score(query, k=max(config.top_k, 6))
+    except Exception as exc:
+        logger.debug("RAG document retrieval failed: %s", exc)
+        return []
+
+    hits = []
+    for document, distance in retrieved:
+        metadata = dict(document.metadata or {})
+        if metadata.get("kind") != "doc":
+            continue
+        score = max(0.0, 1.0 - (float(distance) ** 2) / 2.0)
+        source = str(metadata.get("source") or "tài liệu")
+        file_name = os.path.basename(source) if source else "tài liệu"
+        page = metadata.get("page")
+        hits.append(
+            {
+                "source": "rag",
+                "item_id": metadata.get("record_id") or file_name,
+                "chunk_id": metadata.get("record_id") or file_name,
+                "file": file_name,
+                "type": "rag",
+                "page": page,
+                "sheet": None,
+                "row_start": None,
+                "row_end": None,
+                "heading": metadata.get("topic"),
+                "topic": metadata.get("topic"),
+                "question": _rag_doc_question(document),
+                "norm": normalize_text(document.page_content or ""),
+                "text": document.page_content or "",
+                "score": round(score, 4),
+                "question_count": 1,
+            }
+        )
+    hits.sort(key=lambda hit: hit["score"], reverse=True)
+    return hits
+
+
+def llm_summary_enabled():
+    return os.environ.get("ENABLE_LLM_SUMMARY", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def get_summary_llm():
+    return ChatOllama(
+        model=config.answer_model,
+        base_url=config.ollama_base_url,
+        num_predict=120,
+    )
+
+
+def _summary_prompt(context, question):
+    return (
+        "Chỉ dùng các câu trích sau để trả lời ngắn gọn bằng tiếng Việt. "
+        "Không thêm thông tin ngoài ngữ cảnh. Nếu ngữ cảnh không đủ, "
+        "hãy trả lời bằng chính các câu trích.\n\n"
+        f"Ngữ cảnh:\n{context}\n\nC\u00e2u h\u1ecfi: {question}"
+    )
+
+
+def summarize_document_answer(answer_bullets, question):
+    """Optional LLM summary of extracted sentences (disabled by default)."""
+
+    if not llm_summary_enabled():
+        return None
+    bullets = [str(item) for item in (answer_bullets or []) if str(item).strip()]
+    if not bullets:
+        return None
+    try:
+        response = get_summary_llm().invoke(
+            _summary_prompt("\n".join(bullets), question)
+        )
+        content = (response.content or "").strip()
+        return content or None
+    except Exception as exc:
+        logger.warning("LLM summary failed; fallback extractive: %s", exc)
+        return None
+
+
+def stream_document_summary(answer_bullets, question):
+    """Optional streaming variant used by /chat/stream."""
+
+    if not llm_summary_enabled():
+        return
+    bullets = [str(item) for item in (answer_bullets or []) if str(item).strip()]
+    if not bullets:
+        return
+    try:
+        for chunk in get_summary_llm().stream(
+            _summary_prompt("\n".join(bullets), question)
+        ):
+            content = getattr(chunk, "content", "")
+            if content:
+                yield str(content)
+    except Exception as exc:
+        logger.warning("LLM summary stream failed: %s", exc)
+        return
 
 
 def ask_ai(question):

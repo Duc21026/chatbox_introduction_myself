@@ -2,18 +2,29 @@ from backend import app as app_module
 
 
 def test_chat_contract_shape(monkeypatch):
-    monkeypatch.setattr(app_module, "ask_ai", lambda question: "câu trả lời")
+    payload = {
+        "type": "answer",
+        "session_id": "s-1",
+        "score": 0.9,
+        "response": "câu trả lời",
+        "message": None,
+        "answer_bullets": None,
+        "source": "kb:test",
+        "sources": [],
+        "suggestions": [],
+        "topics": [],
+        "examples": [],
+        "actions": [],
+    }
+    monkeypatch.setattr(
+        app_module._assistant, "handle", lambda **kwargs: payload
+    )
     client = app_module.app.test_client()
 
     response = client.post("/chat", json={"message": "câu hỏi"})
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "type": "answer",
-        "score": None,
-        "response": "câu trả lời",
-        "answer_bullets": None,
-    }
+    assert response.get_json() == payload
 
 
 def test_chat_contract_rejects_blank_message():
