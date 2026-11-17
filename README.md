@@ -1,6 +1,90 @@
 # Chatbot giới thiệu bản thân
 
-Chatbot hỏi đáp tiếng Việt giới thiệu hồ sơ học tập của Văn Phú Đức. Toàn bộ hệ thống chạy bằng Docker Compose: giao diện React (nginx), backend Flask + LangChain + FAISS và Ollama cho mô hình ngôn ngữ.
+Chatbot hỏi đáp tiếng Việt giới thiệu hồ sơ học tập của Văn Phú Đức. Hệ thống có hai cách chạy: **Vercel + Cloudflare Workers AI** (miễn phí, dùng cho production) và **Docker Compose + Ollama** (giữ làm nhánh rollback/local).
+
+## Triển khai Vercel + Cloudflare Workers AI
+
+```text
+Trình duyệt ──► React tĩnh (Vercel)
+                   │  POST /api/chat
+                   ▼
+             Python Function (Vercel)
+                   ├─ chuẩn hoá câu hỏi
+                   ├─ Cloudflare @cf/baai/bge-m3 (chỉ embed câu hỏi)
+                   ├─ data/vectors.json (tính sẵn) + cosine + fuzzy
+                   └─ answer / suggest / clarify
+```
+
+- Repo dùng **Vercel Services**: service `backend` (Flask, root `.`) public tại `/api/*`,
+  service `frontend` (Vite, root `frontend`) public tại `/`; không cần binding vì frontend
+  gọi backend qua public path `/api/*`.
+- `data/chatbot.txt` là nguồn chuẩn duy nhất; `data/sources/*` chứa môn học/bí danh.
+- `data/vectors.json` do `scripts/build_vectors.py` sinh ra và **phải commit**.
+- Nếu Cloudflare lỗi/hết hạn mức, backend dùng khớp từ khoá + fuzzy và không trả HTTP 500.
+- Function deploy **không** cài LangChain, FAISS hay Ollama; các gói đó chỉ dùng cho Docker.
+
+### Biến môi trường Vercel
+
+Đặt trong Project → Settings → Environment Variables (Production + Preview):
+
+| Biến | Giá trị |
+|------|---------|
+| `CF_ACCOUNT_ID` | Account ID Cloudflare (bí mật) |
+| `CF_API_TOKEN` | Token quyền Workers AI (bí mật, không commit) |
+| `CHATBOT_EMBEDDING_PROVIDER` | `cloudflare` |
+| `CHATBOT_VECTORS_PATH` | `data/vectors.json` |
+| `CHATBOT_KB_HIGH_THRESHOLD` / `CHATBOT_SUGGEST_THRESHOLD` | theo `scripts/tune_weights.py` |
+| `CHATBOT_FUZZY_WEIGHT` | mặc định `0.2` |
+| `VITE_API_BASE_URL` | `/api` |
+
+Hoặc dùng CLI sau khi đã `vercel login` + `vercel link`:
+
+```bash
+cp .env.example .env   # điền token thật, KHÔNG commit .env
+bash scripts/setup_vercel_env.sh
+vercel env ls
+```
+
+### Quy trình cập nhật dữ liệu
+
+```bash
+# 1. Sửa data/chatbot.txt hoặc data/sources/*
+# 2. Kiểm tra
+python scripts/check_chatbot.py data/chatbot.txt
+# 3. Bắt buộc tạo lại vector
+python scripts/build_vectors.py
+# 4. Commit + push (Vercel tự deploy)
+git add data/chatbot.txt data/vectors.json
+git commit -m "data: update chatbot source"
+git push
+# 5. Hỏi thử T1–T3 trên URL công khai
+```
+
+Nếu quên bước 3, `/api/health` báo `source_hash_matches=false` và chatbot dùng fallback
+từ khoá thay vì vector cũ.
+
+### Hiệu chỉnh ngưỡng
+
+```bash
+python scripts/tune_weights.py
+# mặc định dùng backend/evaluation/deploy_questions.json
+```
+
+Ghi lại `FUZZY_W`, `HIGH`, `MID` đề xuất vào biến môi trường Vercel. Không dùng lại
+ngưỡng cũ của Ollama cho vector Cloudflare.
+
+### Rate limit, rollback và bảo mật
+
+- Tạo **1 rule** Vercel WAF: `POST /api/chat`, 30 request/60 giây/IP, trả `429`; bấm **Publish**.
+- Rollback: Vercel → Deployments → chọn bản trước → **Promote to Production**.
+- Sự cố Cloudflare kéo dài: đặt `CHATBOT_EMBEDDING_PROVIDER=none` để chỉ dùng fallback.
+- Quay lại Ollama:
+  ```bash
+  git checkout ollama-version
+  docker compose up --build -d
+  ```
+- Token lộ: thu hồi `CF_API_TOKEN`, tạo token mới, cập nhật env Vercel và redeploy.
+- Không đưa câu hỏi/dữ liệu nhạy cảm vào kho tri thức; giao diện có thông báo gửi câu hỏi tới Cloudflare.
 
 ## Kiến trúc Docker
 
@@ -87,12 +171,12 @@ Biến môi trường được đặt trong `backend/.env` hoặc trong mục `e
 | `CHATBOT_EMBEDDING_MODEL` | `bge-m3` | Model embedding |
 | `CHATBOT_RELEVANCE_THRESHOLD` | `1.0` | Ngưỡng lọc đoạn không liên quan |
 | `CHATBOT_FUZZY_CUTOFF` | `80` | Ngưỡng khớp mờ với các bản ghi `qa` |
-| `CHATBOT_SOURCE_PATH` | `backend/data/chatbot.txt` | Tệp nguồn viết tay duy nhất (`qa`/`doc`/`fact`) |
-| `CHATBOT_COURSES_PATH` | `backend/data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập |
-| `CHATBOT_ALIASES_PATH` | `backend/data/sources/aliases.txt` | Bí danh câu hỏi (vtp2, oop, ctdl…) |
-| `CHATBOT_INBOX_DIR` | `backend/data/inbox` | Thư mục chờ nạp PDF/DOCX/XLSX/CSV/TXT |
-| `CHATBOT_LEGACY_SOURCES` | `false` | Bật đọc `qa.txt`/`kb.json`/`backend/data/` để rollback tạm thời |
-| `CHATBOT_DATA_DIR` | `backend/data` | Thư mục dữ liệu mặc định (dùng khi legacy hoặc chạy CLI) |
+| `CHATBOT_SOURCE_PATH` | `data/chatbot.txt` | Tệp nguồn viết tay duy nhất (`qa`/`doc`/`fact`) |
+| `CHATBOT_COURSES_PATH` | `data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập |
+| `CHATBOT_ALIASES_PATH` | `data/sources/aliases.txt` | Bí danh câu hỏi (vtp2, oop, ctdl…) |
+| `CHATBOT_INBOX_DIR` | `data/inbox` | Thư mục chờ nạp PDF/DOCX/XLSX/CSV/TXT |
+| `CHATBOT_LEGACY_SOURCES` | `false` | Bật đọc `qa.txt`/`kb.json`/`data/` để rollback tạm thời |
+| `CHATBOT_DATA_DIR` | `data` | Thư mục dữ liệu mặc định (dùng khi legacy hoặc chạy CLI) |
 | `CHATBOT_QA_PATH` | `backend/qa.txt` | Tệp Q&A cũ (deprecated, chỉ dùng khi legacy) |
 | `CHATBOT_OLLAMA_BASE_URL` | `http://ollama:11434` | Địa chỉ Ollama trong mạng Docker |
 | `CHATBOT_CHUNK_SIZE` | `500` | Kích thước đoạn |
@@ -160,10 +244,10 @@ docker compose exec ollama nvidia-smi   # nếu có GPU
 Backend đọc **một tệp viết tay duy nhất** cùng các nguồn dữ liệu mở, tất cả được bind mount vào container:
 
 ```text
-backend/data/chatbot.txt            → /app/backend/data/chatbot.txt
-backend/data/sources/courses.csv    → /app/backend/data/sources/courses.csv
-backend/data/sources/aliases.txt    → /app/backend/data/sources/aliases.txt
-backend/data/inbox/                 → /app/backend/data/inbox/
+data/chatbot.txt            → /app/data/chatbot.txt
+data/sources/courses.csv    → /app/data/sources/courses.csv
+data/sources/aliases.txt    → /app/data/sources/aliases.txt
+data/inbox/                 → /app/data/inbox/
 ```
 
 Sửa tệp trên máy host có hiệu lực ngay: backend tự phát hiện thay đổi (mtime/kích thước/hash) và tạo lại chỉ mục khi cần, không cần khởi động lại. Nếu nguồn mới không hợp lệ, backend giữ nguyên nguồn tốt gần nhất và ghi cảnh báo.
@@ -340,10 +424,10 @@ docker compose down -v                # dừng và xóa volume (mất model Olla
 |-----------|---------|
 | `frontend/` | Giao diện React: chat, Markdown, code copy, theme, cuộc trò chuyện trong phiên |
 | `backend/` | Dịch vụ Python: API, KB engine, RAG, quản lý nguồn, đánh giá, kiểm thử |
-| `backend/data/chatbot.txt` | Nguồn viết tay duy nhất: `kind: qa|doc|fact`, placeholder `{{id}}`, `status` |
-| `backend/data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập (tự sinh QA + số tổng hợp) |
-| `backend/data/sources/aliases.txt` | Bí danh câu hỏi (`vtp2`, `oop`, `ctdl`…) |
-| `backend/data/inbox/` | Tệp chờ nạp vào chỉ mục RAG |
+| `data/chatbot.txt` | Nguồn viết tay duy nhất: `kind: qa|doc|fact`, placeholder `{{id}}`, `status` |
+| `data/sources/courses.csv` | Danh sách môn học — nguồn mọi số liệu học tập (tự sinh QA + số tổng hợp) |
+| `data/sources/aliases.txt` | Bí danh câu hỏi (`vtp2`, `oop`, `ctdl`…) |
+| `data/inbox/` | Tệp chờ nạp vào chỉ mục RAG |
 | `backend/Dockerfile` | Image backend Python 3.11 |
 | `frontend/Dockerfile` | Build React rồi phục vụ bằng nginx |
 | `frontend/nginx.conf` | SPA fallback + proxy `/chat` sang backend |

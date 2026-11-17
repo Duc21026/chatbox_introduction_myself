@@ -1,0 +1,249 @@
+{
+  "questions": [
+    {
+      "id": "Q01",
+      "question": "GPA hiện tại của bạn là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "8.51",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q02",
+      "question": "Điểm môn Đại số tuyến tính của bạn là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q03",
+      "question": "Bạn đang học trường nào?",
+      "category": "direct",
+      "expected_answer": "Đại học Khoa học Tự nhiên - ĐHQG TP.HCM",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q04",
+      "question": "Mục tiêu dài hạn của bạn là gì?",
+      "category": "direct",
+      "expected_answer": "Săn học bổng Thạc sĩ tại Đức",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q05",
+      "question": "Điểm môn Cấu trúc dữ liệu và giải thuật là bao nhiêu?",
+      "category": "direct",
+      "expected_answer": "5.4",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q06",
+      "question": "Điểm trung bình tích lũy của bạn đạt bao nhiêu?",
+      "category": "paraphrase",
+      "expected_answer": "8.51",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q07",
+      "question": "Bạn đang theo học ngôi trường nào vậy?",
+      "category": "paraphrase",
+      "expected_answer": "Đại học Khoa học Tự nhiên - ĐHQG TP.HCM",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q08",
+      "question": "Bạn đã tích lũy được bao nhiêu tín chỉ rồi?",
+      "category": "paraphrase",
+      "expected_answer": "87",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q09",
+      "question": "gpa cua ban la bao nhieu?",
+      "category": "no_diacritics",
+      "expected_answer": "8.51",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q10",
+      "question": "diem mon dai so tuyen tinh cua ban?",
+      "category": "no_diacritics",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q11",
+      "question": "Em ơi, điểm Vi tích phân 2 của em bao nhiêu?",
+      "category": "pronoun_variant",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q12",
+      "question": "Anh muốn biết môn nào bạn học tốt nhất?",
+      "category": "pronoun_variant",
+      "expected_answer": "Đại số tuyến tính, Vi tích phân 2",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q13",
+      "question": "Giá vàng hôm nay bao nhiêu?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q14",
+      "question": "Thời tiết Hà Nội ngày mai thế nào?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q15",
+      "question": "Bạn có biết đội tuyển bóng đá Việt Nam vô địch năm nào không?",
+      "category": "out_of_scope",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q16",
+      "question": "Bạn học trường nào?",
+      "category": "direct",
+      "expected_answer": "Đại học Khoa học Tự nhiên",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q17",
+      "question": "Bạn biết những ngôn ngữ lập trình nào?",
+      "category": "direct",
+      "expected_answer": "Python",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q18",
+      "question": "Bạn đã làm dự án gì?",
+      "category": "direct",
+      "expected_answer": "Vietnam Air Quality",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q19",
+      "question": "Điểm mạnh của bạn là gì?",
+      "category": "direct",
+      "expected_answer": "toán học",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q20",
+      "question": "Điểm yếu của bạn là gì?",
+      "category": "direct",
+      "expected_answer": "Cấu trúc dữ liệu",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q21",
+      "question": "Xin chào",
+      "category": "direct",
+      "expected_answer": "Xin chào",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q22",
+      "question": "GPA xét chuyên ngành của bạn?",
+      "category": "direct",
+      "expected_answer": "8.55",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q23",
+      "question": "Bạn muốn săn học bổng ở đâu?",
+      "category": "direct",
+      "expected_answer": "TUHH",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q24",
+      "question": "Mục tiêu IELTS của bạn?",
+      "category": "direct",
+      "expected_answer": "6.5",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q25",
+      "question": "Định hướng nghề nghiệp của bạn?",
+      "category": "direct",
+      "expected_answer": "AI Engineer",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q26",
+      "question": "Bạn học ngành gì?",
+      "category": "direct",
+      "expected_answer": "Khoa học Máy tính",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q27",
+      "question": "diem mon co so du lieu cua ban",
+      "category": "no_diacritics",
+      "expected_answer": "9.8",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q28",
+      "question": "gpa bao nhieu",
+      "category": "no_diacritics",
+      "expected_answer": "8.51",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q29",
+      "question": "diem ctdl",
+      "category": "abbreviation",
+      "expected_answer": "5.4",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q30",
+      "question": "diem xstk",
+      "category": "abbreviation",
+      "expected_answer": "10.0",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q31",
+      "question": "diem pp lt huong doi tuong",
+      "category": "typo",
+      "expected_answer": "6.9",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q32",
+      "question": "muc tieu",
+      "category": "ambiguous",
+      "expected_answer": null,
+      "expected_refusal": false
+    },
+    {
+      "id": "Q33",
+      "question": "ky nang",
+      "category": "ambiguous",
+      "expected_answer": "Python",
+      "expected_refusal": false
+    },
+    {
+      "id": "Q34",
+      "question": "gia vang hom nay",
+      "category": "off_topic",
+      "expected_answer": null,
+      "expected_refusal": true
+    },
+    {
+      "id": "Q35",
+      "question": "thoi tiet ha noi",
+      "category": "off_topic",
+      "expected_answer": null,
+      "expected_refusal": true
+    }
+  ]
+}

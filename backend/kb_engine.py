@@ -25,13 +25,16 @@ from typing import Optional
 
 import numpy as np
 from cachetools import LRUCache
-from langchain_ollama import OllamaEmbeddings
 from rapidfuzz import fuzz
 
 try:
-    from .text_normalization import normalize_query
+    from . import embedding_provider, source_store, vector_store
+    from .text_normalization import NORMALIZER_VERSION, normalize_query
 except ImportError:
-    from text_normalization import normalize_query
+    import embedding_provider
+    import source_store
+    import vector_store
+    from text_normalization import NORMALIZER_VERSION, normalize_query
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +63,6 @@ def _kb_path() -> str:
 
 def _cache_path() -> str:
     return os.path.join(BACKEND_DIR, "embeddings_cache.npz")
-
-def _ollama_base_url() -> str:
-    return os.environ.get("CHATBOT_OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 
 def _embedding_model() -> str:
     return os.environ.get("CHATBOT_EMBEDDING_MODEL", "bge-m3")
@@ -247,12 +247,12 @@ def _load_kb(raw_items) -> list[dict]:
 # Embedding
 # ---------------------------------------------------------------------------
 
-def _build_embeddings(questions: list[str], ollama_base_url: str,
-                      embedding_model: str) -> np.ndarray:
+def _build_embeddings(questions: list[str]) -> np.ndarray:
     """Embed all normalized questions. Returns float32 array (N, D)."""
-    embedder = OllamaEmbeddings(model=embedding_model, base_url=ollama_base_url)
     normalized = [normalize_query(q) or q for q in questions]
-    vectors = embedder.embed_documents(normalized)
+    vectors = embedding_provider.embed_texts(normalized)
+    if not vectors:
+        raise RuntimeError("embedding provider không trả về vector")
     return np.array(vectors, dtype=np.float32)
 
 # ---------------------------------------------------------------------------
@@ -267,47 +267,108 @@ def _cosine_sim(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / denom)
 
 
+def _fuzzy_weight() -> float:
+    value = _env_float("CHATBOT_FUZZY_WEIGHT", 0.2)
+    return min(1.0, max(0.0, value))
+
+
 def _hybrid_score(query_emb: np.ndarray, candidate_emb: np.ndarray,
                   query_norm: str, candidate_norm: str) -> float:
-    """0.8 * cosine_sim + 0.2 * WRatio/100."""
+    """(1 - FUZZY_W) * cosine_sim + FUZZY_W * WRatio/100."""
     cos = _cosine_sim(query_emb, candidate_emb)
     fuzzy = fuzz.WRatio(query_norm, candidate_norm) / 100.0
-    return round(0.8 * cos + 0.2 * fuzzy, 4)
+    weight = _fuzzy_weight()
+    return round((1.0 - weight) * cos + weight * fuzzy, 4)
 
 
 def _embed_query(query_norm: str) -> Optional[np.ndarray]:
     """Embed a single normalized query string."""
     try:
-        embedder = OllamaEmbeddings(
-            model=_embedding_model(), base_url=_ollama_base_url()
-        )
-        vec = embedder.embed_query(query_norm)
+        vec = embedding_provider.embed_query(query_norm)
+        if not vec:
+            return None
         return np.array(vec, dtype=np.float32)
     except Exception as exc:
-        logger.warning("KB Engine: không thể embed câu hỏi: %s", exc)
+        logger.warning("KB Engine: không thể embed câu hỏi: %s", type(exc).__name__)
         return None
 
 # ---------------------------------------------------------------------------
 # Warm-up
 # ---------------------------------------------------------------------------
 
-def warm_up_kb(source=None) -> None:
-    """Load KB items from the unified source and restore/build embeddings.
+def _is_deployment_runtime() -> bool:
+    runtime = os.environ.get("CHATBOT_RUNTIME", "").strip().lower()
+    return runtime == "deployment" or bool(os.environ.get("VERCEL"))
 
-    Called from app.py during server startup (alongside chatbox.warm_up()).
-    Non-fatal: logs errors but does not raise so the server can still start
-    and fall back to the RAG pipeline.
+
+def _is_legacy_runtime() -> bool:
+    return os.environ.get("CHATBOT_LEGACY_SOURCES", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
+def _default_source():
+    if _is_legacy_runtime():
+        try:
+            from . import chatbox
+        except ImportError:
+            import chatbox
+        return chatbox.get_source()
+    return source_store.get_source(source_store.default_config())
+
+
+def _index_vectors(source, items):
+    """Load a precomputed index only when it matches the current source."""
+
+    index = vector_store.load(
+        expected_model=_embedding_model(),
+        expected_normalizer=NORMALIZER_VERSION,
+    )
+    if index is None:
+        return None
+    if not index.matches_source(source):
+        logger.warning(
+            "KB Engine: chỉ mục vector đã cũ (hash không khớp); dùng fallback lexical."
+        )
+        return None
+    if not vector_store.matches_entries(index, source):
+        logger.warning(
+            "KB Engine: chỉ mục vector có item không còn trong nguồn; dùng fallback lexical."
+        )
+        return None
+
+    index_by_id = {item["id"]: idx for idx, item in enumerate(items)}
+    questions = []
+    norms = []
+    item_indices = []
+    vectors = []
+    for entry in index.entries:
+        idx = index_by_id.get(entry.item_id)
+        if idx is None:
+            return None
+        questions.append(entry.question)
+        norms.append(entry.norm)
+        item_indices.append(idx)
+        vectors.append(entry.vector)
+    return questions, norms, item_indices, np.array(vectors, dtype=np.float32)
+
+
+def warm_up_kb(source=None) -> None:
+    """Load KB items from the unified source and restore precomputed vectors.
+
+    The deployment runtime never builds embeddings at startup: if the bundled
+    index is missing/stale it logs a warning and uses lexical/fuzzy fallback.
+    Local/Docker keeps the previous Ollama cache behavior.
     """
     global _kb_items, _questions, _questions_norm, _item_indices, _embeddings
     global _kb_hash_value, _source_signature
 
     if source is None:
         try:
-            try:
-                from . import chatbox
-            except ImportError:
-                import chatbox
-            source = chatbox.get_source()
+            source = _default_source()
         except Exception as exc:
             logger.error(
                 "KB Engine: không đọc được nguồn hợp nhất: %s — KB Engine disabled.",
@@ -329,7 +390,6 @@ def warm_up_kb(source=None) -> None:
         logger.info("KB Engine: nguồn không có bản ghi qa — KB Engine disabled.")
         return
 
-    # Flatten questions list
     questions: list[str] = []
     item_indices: list[int] = []
     for idx, item in enumerate(items):
@@ -338,47 +398,60 @@ def warm_up_kb(source=None) -> None:
                 questions.append(q.strip())
                 item_indices.append(idx)
 
+    _kb_items = items
+    _questions = questions
+    _questions_norm = [normalize_query(q) or q for q in questions]
+    _item_indices = item_indices
+
+    loaded = _index_vectors(source, items)
+    if loaded is not None:
+        _questions, _questions_norm, _item_indices, _embeddings = loaded
+        logger.info(
+            "KB Engine: %d items, %d questions — precomputed vectors loaded.",
+            len(items), len(_questions),
+        )
+        return
+
+    _embeddings = None
+    if _is_deployment_runtime():
+        logger.warning(
+            "KB Engine: không có chỉ mục vector hợp lệ trong môi trường deploy; "
+            "dùng fallback lexical/fuzzy."
+        )
+        return
+
     cache_path = _cache_path()
     t0 = time.monotonic()
-
-    # Try to load from cache
     cached = _load_cache(cache_path)
     if cached and cached["kb_hash"] == current_hash:
-        _kb_items = items
         _questions = cached["questions"]
         _questions_norm = [normalize_query(q) or q for q in _questions]
         _item_indices = cached["item_indices"]
         _embeddings = cached["embeddings"]
-        elapsed = time.monotonic() - t0
         logger.info(
             "KB Engine: %d items, %d questions — embeddings loaded from cache in %.1fs",
-            len(items), len(_questions), elapsed,
+            len(items), len(_questions), time.monotonic() - t0,
         )
         return
 
-    # Build embeddings
     logger.info(
         "KB Engine: building embeddings for %d questions (source changed or no cache)…",
         len(questions),
     )
     try:
-        embeddings = _build_embeddings(questions, _ollama_base_url(), _embedding_model())
+        embeddings = _build_embeddings(questions)
     except Exception as exc:
-        logger.error("KB Engine: failed to build embeddings: %s — KB Engine disabled.", exc)
+        logger.error(
+            "KB Engine: failed to build embeddings: %s — dùng fallback lexical.",
+            type(exc).__name__,
+        )
         return
 
-    _kb_items = items
-    _questions = questions
-    _questions_norm = [normalize_query(q) or q for q in questions]
-    _item_indices = item_indices
     _embeddings = embeddings
-
     _save_cache(cache_path, current_hash, questions, item_indices, embeddings)
-
-    elapsed = time.monotonic() - t0
     logger.info(
         "KB Engine: %d items, %d questions — embeddings rebuilt (source changed) in %.1fs",
-        len(items), len(questions), elapsed,
+        len(items), len(questions), time.monotonic() - t0,
     )
 
 
@@ -388,11 +461,7 @@ def _refresh_if_changed() -> None:
     if _kb_hash_value is None:
         return
     try:
-        try:
-            from . import chatbox
-        except ImportError:
-            import chatbox
-        source = chatbox.get_source()
+        source = _default_source()
     except Exception:
         return
     if source.kb_hash == _kb_hash_value:

@@ -37,9 +37,9 @@ pip-wheel-metadata/
 !**/.env.example
 
 # Local data, logs, archives, and partial writes
-/data/
+/data/inbox/*
+!/data/inbox/.gitkeep
 backend/data/*
-!backend/data/chatbot.txt
 *.log
 *.tmp
 *.part
@@ -64,3 +64,4 @@ backend/doc_index/
     *.swp
     
 Spec/template.txt
+.vercel

@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source
 COPY backend/ ./backend/
+COPY data/    ./data/
 COPY app.py   ./app.py
 
 # Expose Flask default port
@@ -25,9 +26,9 @@ ENV CHATBOT_ANSWER_MODEL=qwen2.5:7b \
     CHATBOT_EMBEDDING_MODEL=bge-m3 \
     CHATBOT_RELEVANCE_THRESHOLD=1.0 \
     CHATBOT_FUZZY_CUTOFF=80 \
-    CHATBOT_DATA_DIR=backend/data \
+    CHATBOT_DATA_DIR=data \
     CHATBOT_QA_PATH=backend/qa.txt \
-    CHATBOT_SOURCE_PATH=backend/data/chatbot.txt \
+    CHATBOT_SOURCE_PATH=data/chatbot.txt \
     CHATBOT_LEGACY_SOURCES=false \
     CHATBOT_OLLAMA_BASE_URL=http://ollama:11434 \
     CHATBOT_CHUNK_SIZE=500 \

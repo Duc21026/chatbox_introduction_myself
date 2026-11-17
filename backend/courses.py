@@ -21,7 +21,8 @@ except ImportError:  # direct execution from backend/
     from text_normalization import normalize_text
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_COURSES_PATH = os.path.join(BACKEND_DIR, "data", "sources", "courses.csv")
+REPO_ROOT = os.path.dirname(BACKEND_DIR)
+DEFAULT_COURSES_PATH = os.path.join(REPO_ROOT, "data", "sources", "courses.csv")
 
 COLUMNS = (
     "code",

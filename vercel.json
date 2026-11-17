@@ -1,0 +1,43 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "backend": {
+      "root": ".",
+      "framework": "flask",
+      "functions": {
+        "app.py": {
+          "includeFiles": "{backend/**,data/**}",
+          "excludeFiles": "{frontend/**,backend/tests/**,backend/evaluation/**,backend/data/**,backend/doc_index/**,api/**,scripts/**,specs/**,library/**,**/*.pdf,**/*.docx,**/__pycache__/**,**/*.pyc}",
+          "maxDuration": 60
+        }
+      }
+    },
+    "frontend": {
+      "root": "frontend",
+      "framework": "vite",
+      "installCommand": "npm ci",
+      "buildCommand": "npm run build",
+      "outputDirectory": "dist",
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": {
+        "service": "backend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "frontend"
+      }
+    }
+  ]
+}

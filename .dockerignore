@@ -28,6 +28,12 @@ frontend/.vite
 # Secrets (never copy the real .env into the image)
 backend/.env
 frontend/.env
+.env
+.env.*
+
+# Runtime inbox uploads (keep the directory marker only)
+data/inbox/*
+!data/inbox/.gitkeep
 
 # Docs / specs (not needed at runtime)
 README.md

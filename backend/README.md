@@ -8,8 +8,14 @@ Dịch vụ Python (Flask + LangChain + FAISS) phục vụ giao diện React.
 - `session.py`: TTL, giới hạn số phiên, `shown_ids`, `last_query`, `level`.
 - `doc_loaders.py` + `doc_index.py`: trích xuất PDF/DOCX/XLSX/CSV/TXT/MD, chỉ mục tăng dần và trả lời trích xuất kèm nguồn.
 - `source_format.py`: phân tích, kiểm tra, ánh xạ và ghi nguồn `chatbot.txt` (`CHATBOT-SOURCE v1`).
+- `source_store.py`: đọc nguồn chuẩn `data/chatbot.txt` + courses/aliases mà không phụ thuộc LangChain.
+- `embedding_provider.py`: Cloudflare Workers AI (`@cf/baai/bge-m3`), `none`, hoặc Ollama lazy cho local.
+- `vector_store.py`: đọc/ghi/kiểm tra `data/vectors.json` (model, dim, hash, normalizer).
+- `health.py`: báo cáo `/health` không gọi dịch vụ ngoài.
 - `chatbox.py`, `documents.py`, `text_normalization.py`: cấu hình, RAG dự phòng, quản lý nguồn và chuẩn hóa tiếng Việt.
 - `data/chatbot.txt`: nguồn tri thức hợp nhất — `qa` cho KB engine, `doc` cho RAG dự phòng.
+- `data/vectors.json`: chỉ mục vector sinh bởi `scripts/build_vectors.py`, dùng cho Vercel.
+- `api/chat.py`, `api/health.py`: entrypoint Vercel (`/api/chat`, `/api/health`).
 - `doc_index/`: dữ liệu phái sinh (đã ignore trong git); không thêm `__init__.py` vào thư mục này.
 - `scripts/manage_docs.py`: `add`, `replace`, `delete`, `list`, `ingest`, `remove`, `ask`, `validate`, `migrate`.
 - `evaluation/`, `tests/`: đánh giá và kiểm thử.

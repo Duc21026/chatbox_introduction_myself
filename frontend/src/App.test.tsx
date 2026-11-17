@@ -7,7 +7,10 @@ vi.mock("./lib/chatClient", async (importOriginal) => {
   return { ...actual, sendMessage: vi.fn() };
 });
 
+vi.mock("./lib/health", () => ({ checkHealth: vi.fn() }));
+
 import App from "./App";
+import { checkHealth, type HealthStatus } from "./lib/health";
 import {
   ChatApiError,
   sendMessage,
@@ -16,6 +19,20 @@ import {
 import { useChatStore } from "./store/chatStore";
 
 const sendMock = vi.mocked(sendMessage);
+const healthMock = vi.mocked(checkHealth);
+
+const HEALTHY: HealthStatus = {
+  status: "ok",
+  vectors_loaded: true,
+  vector_count: 10,
+  model: "@cf/baai/bge-m3",
+  dim: 1024,
+  normalizer_version: "2",
+  source_hash_matches: true,
+  embedding_provider: "cloudflare",
+  provider_ready: true,
+  message: "Sẵn sàng",
+};
 
 function answer(content: string, session = "s-1"): ChatResponse {
   return {
@@ -41,6 +58,8 @@ async function sendQuestion(user: ReturnType<typeof userEvent.setup>, text: stri
 describe("App", () => {
   beforeEach(() => {
     sendMock.mockReset();
+    healthMock.mockReset();
+    healthMock.mockResolvedValue(HEALTHY);
     useChatStore.getState().resetSession();
     useChatStore.getState().setSidebarOpen(true);
     useChatStore.getState().setThemeMode("system");
@@ -139,6 +158,23 @@ describe("App", () => {
     });
 
     expect(await screen.findByText("Một phần")).toBeInTheDocument();
+  });
+
+  it("shows the Cloudflare notice and a degraded banner", async () => {
+    healthMock.mockResolvedValueOnce({
+      ...HEALTHY,
+      status: "degraded",
+      source_hash_matches: false,
+      message: "Chỉ mục vector đã cũ; dùng fallback từ khoá.",
+    });
+    render(<App />);
+
+    expect(
+      screen.getByText(/Cloudflare Workers AI/),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByText("Chỉ mục vector đã cũ; dùng fallback từ khoá."),
+    ).toBeInTheDocument();
   });
 
   it("changes the theme and exposes the current mode", async () => {

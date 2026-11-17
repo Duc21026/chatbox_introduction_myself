@@ -45,6 +45,7 @@ except ImportError:  # direct execution
 logger = logging.getLogger(__name__)
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(BACKEND_DIR)
 SCHEMA_VERSION = 1
 MANIFEST = "manifest.json"
 FILES = "files.json"

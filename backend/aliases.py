@@ -23,7 +23,8 @@ except ImportError:  # direct execution from backend/
     from text_normalization import normalize_text
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_ALIASES_PATH = os.path.join(BACKEND_DIR, "data", "sources", "aliases.txt")
+REPO_ROOT = os.path.dirname(BACKEND_DIR)
+DEFAULT_ALIASES_PATH = os.path.join(REPO_ROOT, "data", "sources", "aliases.txt")
 
 
 def aliases_path():

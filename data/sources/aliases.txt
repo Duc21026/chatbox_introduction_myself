@@ -1,0 +1,20 @@
+vtp1 | vi tích phân 1
+vtp2 | vi tích phân 2
+ctdl, dsa | cấu trúc dữ liệu và giải thuật
+oop, pplt hđt | phương pháp lập trình hướng đối tượng
+knm, kĩ năng mềm | kỹ năng mềm
+dstt | đại số tuyến tính
+trr | toán rời rạc
+mmt | mạng máy tính
+xstk | xác suất thống kê
+hđh | hệ điều hành
+csdl | cơ sở dữ liệu
+csai | cơ sở trí tuệ nhân tạo
+ktct | kinh tế chính trị mác - lênin
+nmcntt | nhập môn công nghệ thông tin
+cslp | cơ sở lập trình
+vlđc | vật lý đại cương 1
+htmt | hệ thống máy tính
+tdtt | tư duy tính toán
+vl cntt | vật lý cho công nghệ thông tin
+vật lí đại cương | vật lý đại cương 1

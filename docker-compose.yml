@@ -55,10 +55,10 @@ services:
         required: false
     environment:
       CHATBOT_OLLAMA_BASE_URL: http://ollama:11434
-      CHATBOT_SOURCE_PATH: backend/data/chatbot.txt
-      CHATBOT_COURSES_PATH: backend/data/sources/courses.csv
-      CHATBOT_ALIASES_PATH: backend/data/sources/aliases.txt
-      CHATBOT_INBOX_DIR: backend/data/inbox
+      CHATBOT_SOURCE_PATH: data/chatbot.txt
+      CHATBOT_COURSES_PATH: data/sources/courses.csv
+      CHATBOT_ALIASES_PATH: data/sources/aliases.txt
+      CHATBOT_INBOX_DIR: data/inbox
       CHATBOT_LEGACY_SOURCES: "false"
       CHATBOT_DOC_INDEX_DIR: backend/doc_index
       CHATBOT_QUERY_REWRITE: "off"
@@ -68,7 +68,7 @@ services:
     volumes:
       # Unified source is read-only; the derived document index is writable
       # and must survive container rebuilds.
-      - ./backend/data:/app/backend/data:ro
+      - ./data:/app/data:ro
       - ./backend/doc_index:/app/backend/doc_index
     ports:
       - "5000:5000"           # expose for direct testing; nginx proxies in prod
@@ -94,7 +94,7 @@ services:
         # In Docker networking the browser talks to nginx which proxies /chat.
         # Setting the URL to "" (or "/") makes the frontend call /chat relative
         # to its own origin, which nginx then forwards to the backend service.
-        VITE_API_BASE_URL: ""
+        VITE_API_BASE_URL: "/"
     container_name: chatbot-frontend
     restart: unless-stopped
     ports:

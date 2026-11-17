@@ -18,10 +18,12 @@ from rapidfuzz import fuzz, process
 
 try:
     from . import source_format
+    from . import source_store
     from .documents import extract_segments, is_supported_source
     from .text_normalization import NORMALIZER_VERSION, normalize_text
 except ImportError:  # direct execution from backend/
     import source_format
+    import source_store
     from documents import extract_segments, is_supported_source
     from text_normalization import NORMALIZER_VERSION, normalize_text
 
@@ -33,13 +35,14 @@ REFUSAL = "Tôi không biết"
 REPHRASE = "Bạn vui lòng nhập lại câu hỏi rõ ràng hơn."
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_DATA_DIR = os.path.join(BACKEND_DIR, "data")
+REPO_ROOT = os.path.dirname(BACKEND_DIR)
+DEFAULT_DATA_DIR = os.path.join(REPO_ROOT, "data")
 DEFAULT_QA_PATH = os.path.join(BACKEND_DIR, "qa.txt")
 DEFAULT_KB_PATH = os.path.join(BACKEND_DIR, "kb.json")
-DEFAULT_SOURCE_PATH = os.path.join(BACKEND_DIR, "data", "chatbot.txt")
-DEFAULT_COURSES_PATH = os.path.join(BACKEND_DIR, "data", "sources", "courses.csv")
-DEFAULT_ALIASES_PATH = os.path.join(BACKEND_DIR, "data", "sources", "aliases.txt")
-DEFAULT_INBOX_DIR = os.path.join(BACKEND_DIR, "data", "inbox")
+DEFAULT_SOURCE_PATH = os.path.join(REPO_ROOT, "data", "chatbot.txt")
+DEFAULT_COURSES_PATH = os.path.join(REPO_ROOT, "data", "sources", "courses.csv")
+DEFAULT_ALIASES_PATH = os.path.join(REPO_ROOT, "data", "sources", "aliases.txt")
+DEFAULT_INBOX_DIR = os.path.join(REPO_ROOT, "data", "inbox")
 
 
 def _env_float(name, default):
@@ -375,141 +378,6 @@ def _build_legacy_source():
     return derived
 
 
-def _source_key(path):
-    """Signature of every input the derived index depends on.
-
-    Covers the handwritten source plus ``courses.csv``, ``aliases.txt`` and
-    the inbox directory, so any data change is visible on the next request.
-    """
-
-    def _file_entry(candidate):
-        try:
-            status = os.stat(candidate)
-        except OSError:
-            return (candidate, None, None)
-        return (candidate, status.st_mtime_ns, status.st_size)
-
-    entries = [
-        _file_entry(config.source_path),
-        _file_entry(config.courses_path),
-        _file_entry(config.aliases_path),
-    ]
-    inbox_files = []
-    if os.path.isdir(config.inbox_dir):
-        for filename in sorted(os.listdir(config.inbox_dir)):
-            candidate = os.path.join(config.inbox_dir, filename)
-            if not os.path.isfile(candidate) or not is_supported_source(filename):
-                continue
-            status = os.stat(candidate)
-            inbox_files.append([filename, status.st_mtime_ns, status.st_size])
-    entries.append(("inbox", inbox_files))
-    return tuple(entries)
-
-
-def _load_course_inputs():
-    """Read ``courses.csv`` once per source rebuild."""
-
-    try:
-        from . import courses as courses_mod
-    except ImportError:
-        import courses as courses_mod
-
-    try:
-        course_list, course_issues = courses_mod.load_courses(
-            config.courses_path
-        )
-    except Exception as exc:
-        logger.error("Không đọc được courses.csv; bỏ qua dữ liệu môn: %s", exc)
-        course_list, course_issues = [], []
-    for issue in course_issues:
-        if issue.severity == "error":
-            logger.error("courses.csv: [%s] %s", issue.code, issue.message)
-        else:
-            logger.warning("courses.csv: [%s] %s", issue.code, issue.message)
-    return courses_mod, course_list, course_issues
-
-
-def _computed_fact_overrides(courses_mod, course_list):
-    """Serve computed aggregates through the matching fact placeholders.
-
-    The ``fact`` records keep the PDF snapshot for auditing; placeholders use
-    the latest calculation so adding a course immediately changes GPA/credits.
-    """
-
-    if not course_list:
-        return {}
-    aggregated = courses_mod.aggregates(course_list)
-    return {
-        "gpa-10": f"{aggregated['gpa10']:.2f}",
-        "gpa-4": f"{aggregated['gpa4']:.2f}",
-        "credits": str(aggregated["credits_total"]),
-        "courses-count": str(aggregated["courses_count"]),
-        "gpa-major": (
-            f"{aggregated['gpa_major']:.2f} "
-            f"({aggregated['major_courses_count']} môn, "
-            f"{aggregated['major_credits']} tín chỉ)"
-        ),
-    }
-
-
-def _merge_open_data(derived, courses_mod, course_list, course_issues):
-    """Merge courses.csv/aliases.txt into a ``DerivedSource``.
-
-    Registers the global alias map, appends generated per-course Q&A and
-    warns when computed aggregates conflict with fact values.  Errors in the
-    course file are logged but do not kill the handwritten source.
-    """
-
-    try:
-        from . import aliases as aliases_mod
-        from .text_normalization import register_aliases
-    except ImportError:
-        import aliases as aliases_mod
-        from text_normalization import register_aliases
-
-    try:
-        alias_map = aliases_mod.merged_alias_map(course_list, config.aliases_path)
-    except Exception as exc:
-        logger.error("Không đọc được aliases.txt; bỏ qua bí danh: %s", exc)
-        alias_map = {}
-    register_aliases(alias_map)
-
-    if not course_list:
-        return
-
-    for item in courses_mod.build_course_qa(course_list):
-        kb_item = source_format.KBItem(
-            id=item["id"],
-            topic=item["topic"],
-            questions=list(item["questions"]),
-            answer=item["answer"],
-        )
-        derived.kb_items.append(kb_item)
-        for question in item["questions"]:
-            normalized = normalize_text(question)
-            if normalized:
-                derived.qa_pairs.append(
-                    source_format.QAPair(
-                        question=question,
-                        normalized_question=normalized,
-                        answer=item["answer"],
-                        record_id=item["id"],
-                    )
-                )
-
-    aggregated = courses_mod.aggregates(course_list)
-    for issue in courses_mod.check_against_facts(aggregated, derived.facts_map):
-        logger.warning("Số tổng hợp: [%s] %s", issue.code, issue.message)
-
-    derived.kb_hash = hashlib.sha256(
-        json.dumps(
-            [item.as_dict() for item in derived.kb_items],
-            ensure_ascii=False,
-            sort_keys=True,
-        ).encode("utf-8")
-    ).hexdigest()
-
-
 def get_source(force=False):
     """Return the cached ``DerivedSource``; keep the old index on bad edits."""
 
@@ -518,19 +386,23 @@ def get_source(force=False):
     if config.legacy_sources:
         return _build_legacy_source()
 
-    key = _source_key(config.source_path)
+    settings = source_store.SourceConfig(
+        source_path=config.source_path,
+        courses_path=config.courses_path,
+        aliases_path=config.aliases_path,
+        inbox_dir=config.inbox_dir,
+        embedding_model=config.embedding_model,
+        chunk_size=config.chunk_size,
+        chunk_overlap=config.chunk_overlap,
+        normalizer_version=NORMALIZER_VERSION,
+        legacy_sources=config.legacy_sources,
+    )
+    key = source_store.source_key(settings)
     if _source_cache is not None and _source_cache_key == key and not force:
         return _source_cache
 
-    courses_mod, course_list, course_issues = _load_course_inputs()
     try:
-        derived = source_format.load_source(
-            config.source_path,
-            embedding_model=config.embedding_model,
-            chunk_size=config.chunk_size,
-            chunk_overlap=config.chunk_overlap,
-            facts_override=_computed_fact_overrides(courses_mod, course_list),
-        )
+        derived = source_store.build_derived(settings)
     except Exception as exc:
         if _source_cache is not None:
             logger.error(
@@ -538,8 +410,6 @@ def get_source(force=False):
             )
             return _source_cache
         raise
-
-    _merge_open_data(derived, courses_mod, course_list, course_issues)
 
     _source_cache = derived
     _source_cache_key = key

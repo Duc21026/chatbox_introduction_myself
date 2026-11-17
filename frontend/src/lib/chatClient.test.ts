@@ -95,6 +95,16 @@ describe("chat client", () => {
     });
   });
 
+  it("uses the deployed /api prefix when configured", async () => {
+    vi.stubEnv("VITE_API_BASE_URL", "/api");
+    fetchMock.mockResolvedValueOnce(jsonResponse(answer()));
+
+    await sendMessage("GPA?");
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/chat", expect.anything());
+    vi.unstubAllEnvs();
+  });
+
   it("reports abort as an aborted error", async () => {
     const controller = new AbortController();
     fetchMock.mockImplementationOnce(
