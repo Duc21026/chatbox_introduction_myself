@@ -4,6 +4,8 @@
 **Trạng thái**: đã deploy production trên Vercel Services + Cloudflare Workers AI
 **URL production**: https://chatbot-gamma-gilt-33.vercel.app
 
+**Công nghệ & thư viện**: xem [TECH_STACK.md](./TECH_STACK.md)
+
 ---
 
 ## 1. Kiến trúc tổng quan
