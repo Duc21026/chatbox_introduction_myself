@@ -163,32 +163,29 @@ Nếu quên bước build vector, `/api/health` báo `source_hash_matches=false`
 | `/api/health` | ✅ `status: ok`, `280` vector, `source_hash_matches: true` |
 | Cloudflare env trên Vercel | ✅ đã set Production + Preview |
 | `data/vectors.json` | ✅ đã build bằng Cloudflare `@cf/baai/bge-m3` |
-| Chat trả lời trực tiếp | ⚠️ một số câu đang trả `suggest` thay vì `answer` |
-| Tuning `HIGH`/`MID`/`FUZZY_W` | ⚠️ chưa chạy xong trên vector Cloudflare |
+| Chat trả lời trực tiếp | ✅ GPA và OOP trả `answer` đúng |
+| Tuning `HIGH`/`MID`/`FUZZY_W` | ✅ đã chạy; giữ `0.78 / 0.55 / 0.2` |
 | WAF rate limit 30/phút/IP | ⚠️ cần kiểm tra/publish trên dashboard |
 
-### Vì sao có câu trả `suggest`?
+### Đã sửa lỗi chat chỉ trả gợi ý
 
-Ngưỡng hiện tại (`HIGH=0.78`, `MID=0.55`, `FUZZY_W=0.2`) được lấy từ vector Ollama cũ. Vector Cloudflare có phân bố điểm khác, nên câu đúng có thể rơi vào vùng gợi ý. Cần chạy:
-
-```bash
-set -a; source .env; set +a
-python scripts/tune_weights.py
-```
-
-Sau đó cập nhật `CHATBOT_KB_HIGH_THRESHOLD`, `CHATBOT_SUGGEST_THRESHOLD`, `CHATBOT_FUZZY_WEIGHT` trên Vercel và deploy lại.
+Nguyên nhân là `kb_engine` mặc định model `bge-m3` trong khi `vectors.json` dùng
+`@cf/baai/bge-m3`, nên chỉ mục bị coi là không khớp và rơi về fallback từ khoá. Đã sửa
+`embedding_provider.model_name()` để mặc định theo provider (`cloudflare` →
+`@cf/baai/bge-m3`, `ollama` → `bge-m3`) và thêm test hồi quy. Smoke test production hiện
+trả `answer` cho GPA/OOP.
 
 ---
 
 ## 7. Việc cần làm tiếp
 
-- [ ] Chạy `tune_weights.py` trên vector Cloudflare, chọn lại `HIGH`/`MID`/`FUZZY_W`.
-- [ ] Cập nhật env Vercel và redeploy.
-- [ ] Chạy `smoke_deploy.py` đạt T1–T3.
+- [x] Chạy `tune_weights.py` trên vector Cloudflare, chọn lại `HIGH`/`MID`/`FUZZY_W`.
+- [x] Cập nhật env Vercel và redeploy.
+- [x] Chạy `smoke_deploy.py` đạt T1–T3.
 - [ ] Tạo/publish WAF rate limit: `POST /api/chat`, 30 request/60 giây/IP → 429.
 - [ ] Thu hồi token Cloudflare cũ đã từng bị lộ; chỉ giữ token mới trong `.env`/Vercel.
 - [ ] Gắn custom domain (nếu muốn) tại Vercel → Domains.
-- [ ] Commit + push toàn bộ thay đổi và `data/vectors.json` để review.
+- [x] Commit + push toàn bộ thay đổi và `data/vectors.json` để review.
 
 ---
 
