@@ -104,3 +104,11 @@ def test_provider_status_reports_missing_cloudflare_config(monkeypatch):
     assert status["name"] == "cloudflare"
     assert status["ready"] is False
     assert "CF_ACCOUNT_ID" in status["reason"]
+
+
+def test_default_model_follows_provider(monkeypatch):
+    monkeypatch.delenv("CHATBOT_EMBEDDING_MODEL", raising=False)
+    monkeypatch.setenv("CHATBOT_EMBEDDING_PROVIDER", "cloudflare")
+    assert embedding_provider.model_name() == "@cf/baai/bge-m3"
+    monkeypatch.setenv("CHATBOT_EMBEDDING_PROVIDER", "ollama")
+    assert embedding_provider.model_name() == "bge-m3"

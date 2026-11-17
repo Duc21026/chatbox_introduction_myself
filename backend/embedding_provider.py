@@ -53,7 +53,10 @@ def provider_name() -> str:
 
 
 def model_name() -> str:
-    return os.environ.get("CHATBOT_EMBEDDING_MODEL", CLOUDFLARE_MODEL).strip()
+    explicit = (os.environ.get("CHATBOT_EMBEDDING_MODEL") or "").strip()
+    if explicit:
+        return explicit
+    return "bge-m3" if provider_name() == "ollama" else CLOUDFLARE_MODEL
 
 
 def _cloudflare_credentials():

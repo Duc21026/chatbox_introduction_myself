@@ -65,7 +65,7 @@ def _cache_path() -> str:
     return os.path.join(BACKEND_DIR, "embeddings_cache.npz")
 
 def _embedding_model() -> str:
-    return os.environ.get("CHATBOT_EMBEDDING_MODEL", "bge-m3")
+    return embedding_provider.model_name()
 
 def _high_threshold() -> float:
     return _env_float("CHATBOT_KB_HIGH_THRESHOLD", 0.78)
